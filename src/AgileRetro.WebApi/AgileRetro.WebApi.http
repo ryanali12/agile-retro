@@ -1,0 +1,7 @@
+@AgileRetro.WebApi_HostAddress = http://localhost:5164
+
+### OpenAPI document (Development only)
+GET {{AgileRetro.WebApi_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###

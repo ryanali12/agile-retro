@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * Each value is a light-dark() pair resolved by the `color-scheme` property.
+ * By default `:root` follows the operating system. The in-app theme toggle
+ * overrides it with a `data-theme` attribute (see src/shared/theme), which
+ * changes `color-scheme` and therefore every light-dark() value at once.
+ */
+:root {
+  --app-bg: light-dark(#f7f7f8, #101013);
+  --app-surface: light-dark(#ffffff, #1a1a1f);
+  --app-surface-muted: light-dark(#f1f1f4, #24242b);
+  --app-text: light-dark(#1c1c1f, #f2f2f5);
+  --app-muted: light-dark(#6b6b76, #a1a1ad);
+  --app-border: light-dark(#e2e2e8, #2e2e38);
+  --app-primary: light-dark(#4f46e5, #8b85ff);
+  --app-primary-hover: light-dark(#4338ca, #a5a0ff);
+  --app-primary-fg: light-dark(#ffffff, #12121a);
+  --app-danger: light-dark(#dc2626, #f87171);
+  --app-danger-hover: light-dark(#b91c1c, #fca5a5);
+  --app-danger-fg: light-dark(#ffffff, #1a0b0b);
+  --app-success: light-dark(#15803d, #4ade80);
+  --app-warning: light-dark(#b45309, #fbbf24);
+  --app-overlay: light-dark(rgb(16 16 19 / 0.45), rgb(0 0 0 / 0.65));
+
+  color-scheme: light dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-surface-muted: var(--app-surface-muted);
+  --color-text: var(--app-text);
+  --color-muted: var(--app-muted);
+  --color-border: var(--app-border);
+  --color-primary: var(--app-primary);
+  --color-primary-hover: var(--app-primary-hover);
+  --color-primary-foreground: var(--app-primary-fg);
+  --color-danger: var(--app-danger);
+  --color-danger-hover: var(--app-danger-hover);
+  --color-danger-foreground: var(--app-danger-fg);
+  --color-success: var(--app-success);
+  --color-warning: var(--app-warning);
+  --color-overlay: var(--app-overlay);
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg font-sans text-text antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--app-primary);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    @apply bg-primary/25;
+  }
+}
