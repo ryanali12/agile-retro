@@ -38,14 +38,36 @@ The API listens on `http://localhost:5164`. OpenAPI is served at `/openapi/v1.js
 ```bash
 cd src/agile-retro-web
 npm install
-
-# Local API URL; .env is gitignored
-echo "VITE_API_URL=http://localhost:5164/api" > .env
-
 npm run dev
 ```
 
-The app is served on `http://localhost:5173`. The frontend calls the API through `VITE_API_URL`; the API allows any origin in development.
+The app is served on `http://localhost:5173`. The Vite dev server proxies `/api` and `/hubs` to the API, so the browser only talks to the frontend origin. Override the proxy target with `API_PROXY_TARGET` if the API runs elsewhere; see `.env.example`.
+
+## Production
+
+Vite's proxy is development-only. Build the frontend with the public API origin and serve `dist/` from any static host:
+
+```bash
+cd src/agile-retro-web
+
+VITE_API_URL=https://api.example.com/api \
+VITE_HUB_URL=https://api.example.com/hubs/board \
+npm run build
+```
+
+The URL is baked into the build, so rebuild when the API origin changes. If the frontend and API share an origin, omit both variables and the client uses `/api` and `/hubs/board`.
+
+Allow the frontend origin in the API through configuration:
+
+```json
+{
+  "Cors": {
+    "AllowedOrigins": ["https://app.example.com"]
+  }
+}
+```
+
+With environment variables, use `Cors__AllowedOrigins__0=https://app.example.com`. When no origins are configured, the API only serves same-origin requests.
 
 ## Design system
 

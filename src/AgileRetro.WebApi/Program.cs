@@ -11,13 +11,26 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()   // Allows requests from any frontend URL
-              .AllowAnyHeader()   // Allows any request headers
-              .AllowAnyMethod();  // Allows GET, POST, PUT, DELETE, etc.
+        // An empty list means same-origin only (no CORS headers). Set
+        // Cors:AllowedOrigins when the frontend is on another origin.
+        if (allowedOrigins.Length == 0)
+        {
+            return;
+        }
+
+        policy
+            .WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 

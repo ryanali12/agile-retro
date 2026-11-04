@@ -13,7 +13,7 @@ This repository contains a software application consisting of:
 - **Realtime:** SignalR
 - **Architecture:** Backend: a single ASP.NET Core minimal API project with explicit endpoint discovery; frontend: feature-based React SPA (see [Frontend Architecture](#frontend-architecture))
 - **Testing:** Not yet established
-- **Infrastructure / Orchestration:** Local PostgreSQL via `compose.yaml`; no deployment infrastructure yet
+- **Infrastructure / Orchestration:** Local PostgreSQL via `compose.yaml`; the frontend and API can be hosted separately with `Cors:AllowedOrigins` configured
 - **Frontend routing:** `react-router` (`BrowserRouter` + `Routes`)
 - **Realtime client:** `@microsoft/signalr`
 
@@ -128,13 +128,13 @@ The repository is organized as follows:
 │       │   │   ├── board/         Board UI, participants, hub client
 │       │   │   └── participant/   Participant storage and join drawer
 │       │   ├── shared/
-│       │   │   ├── api/           HTTP client and error type
+│       │   │   ├── api/           API base URL and error type
 │       │   │   ├── components/    ThemeToggle, icons, and UI primitives
 │       │   │   ├── theme/         Theme preference provider and helpers
 │       │   │   └── utils/         cn() and initials helpers
 │       │   └── index.css          Tailwind entry point and design tokens
 │       ├── public/
-│       ├── vite.config.ts         Dev proxy for /api and /hubs
+│       ├── vite.config.ts         Dev/preview proxy for /api and /hubs
 │       └── package.json
 │
 ├── compose.yaml                   Local PostgreSQL service
@@ -183,7 +183,7 @@ The API launch profiles (`src/AgileRetro.WebApi/Properties/launchSettings.json`)
 - HTTP: `http://localhost:5164`
 - HTTPS: `https://localhost:7272`
 
-Point the frontend at the API through Vite's dev-server proxy or a `VITE_`-prefixed environment variable. Do not hard-code the API URL into source files, and do not commit local `.env` files.
+Development uses the Vite dev-server proxy. For a separate production origin, set `VITE_API_URL` and `VITE_HUB_URL` at build time and add the frontend origin to `Cors:AllowedOrigins` on the API. Do not hard-code the API host into source files, and do not commit local `.env` files.
 
 ---
 
@@ -259,7 +259,9 @@ The frontend has an app shell (`src/app/App.tsx`), route definitions (`src/app/R
 - Feature-specific code goes in `src/features/<feature>/`; keep it within the feature that owns it.
 - Route-level pages live in their feature (for example `src/features/session/SessionPage.tsx`) and compose feature components.
 - Shared code goes in `src/shared/` only when it is genuinely used in more than one place.
-- API modules read the base URL from `VITE_API_URL` (for example `http://localhost:5164/api` in the local `.env`). Do not hard-code the API host in source files, and do not commit local `.env` files.
+- API modules import `apiBaseUrl` from `src/shared/api/baseUrl.ts`. It defaults to relative `/api`, which uses the Vite proxy in development and the same origin in production; `VITE_API_URL` overrides it at build time for a separate API origin. Do not hard-code the API host in source files, and do not commit local `.env` files.
+- The SignalR client defaults to relative `/hubs/board`; set `VITE_HUB_URL` at build time when the hub is on another origin.
+- Cross-origin deployments must list the frontend origin in `Cors:AllowedOrigins`. The API sends no CORS headers when the list is empty.
 
 - Keep feature-specific code within the feature that owns it.
 - Move code into shared locations only when it is genuinely reusable.
@@ -397,6 +399,13 @@ When adding a feature:
 - Avoid unnecessary layers and abstractions.
 - Keep business logic separate from infrastructure and presentation concerns where appropriate.
 - Follow existing dependency boundaries.
+
+### Cross-origin and proxies
+
+- Development uses the Vite dev/preview proxy for `/api` and `/hubs`; the proxy target comes from `API_PROXY_TARGET` and defaults to `http://localhost:5164`.
+- Production uses relative `/api` and `/hubs/board` when the app is same-origin with the API. When the API is on another origin, set `VITE_API_URL` and `VITE_HUB_URL` at build time.
+- The API only emits CORS headers for origins listed in `Cors:AllowedOrigins`. Keep the list empty for same-origin deployments, and configure it through environment variables in production (`Cors__AllowedOrigins__0`).
+- The Vite proxy is not a production feature. Add a reverse proxy only when the deployment topology requires one; do not rely on the Vite server in production.
 
 ---
 
