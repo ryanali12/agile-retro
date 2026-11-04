@@ -1,16 +1,19 @@
 import { HubConnectionState, type HubConnection } from "@microsoft/signalr";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { z } from "zod";
 import {
   BoardCardSchema,
   BoardParticipantsSchema,
   boardQueryKey,
   createBoardCard,
+  deleteBoardCard,
   joinBoard,
   updateBoardCard,
   type BoardCard,
   type BoardSnapshot,
   type CreateBoardCardInput,
+  type DeleteBoardCardInput,
   type UpdateBoardCardInput,
 } from "./api";
 import { createBoardConnection } from "./connection";
@@ -33,6 +36,13 @@ function upsertCard(snapshot: BoardSnapshot, card: BoardCard): BoardSnapshot {
   return {
     ...snapshot,
     cards: mergeCard(snapshot.cards, card),
+  };
+}
+
+function removeCard(snapshot: BoardSnapshot, cardId: string): BoardSnapshot {
+  return {
+    ...snapshot,
+    cards: snapshot.cards.filter((card) => card.id !== cardId),
   };
 }
 
@@ -70,6 +80,17 @@ export function useBoardSession(code: string, participantId: string) {
       );
     };
 
+    const handleCardDeleted = (payload: unknown) => {
+      const parsed = z.uuid().safeParse(payload);
+
+      if (!parsed.success) return;
+
+      queryClient.setQueryData<BoardSnapshot>(
+        boardQueryKey(code),
+        (current) => (current ? removeCard(current, parsed.data) : current),
+      );
+    };
+
     const handleParticipantsChanged = (payload: unknown) => {
       const parsed = BoardParticipantsSchema.safeParse(payload);
 
@@ -84,6 +105,7 @@ export function useBoardSession(code: string, participantId: string) {
 
     connection.on("CardCreated", handleCardUpserted);
     connection.on("CardUpdated", handleCardUpserted);
+    connection.on("CardDeleted", handleCardDeleted);
     connection.on("ParticipantsChanged", handleParticipantsChanged);
 
     connection.onreconnecting(() => {
@@ -121,6 +143,7 @@ export function useBoardSession(code: string, participantId: string) {
       disposed = true;
       connection.off("CardCreated", handleCardUpserted);
       connection.off("CardUpdated", handleCardUpserted);
+      connection.off("CardDeleted", handleCardDeleted);
       connection.off("ParticipantsChanged", handleParticipantsChanged);
       void connection.stop();
 
@@ -208,6 +231,24 @@ export function useBoardSession(code: string, participantId: string) {
     },
   });
 
+  const deleteCard = useMutation({
+    mutationFn: (input: DeleteBoardCardInput) => {
+      const connection = connectionRef.current;
+
+      if (!connection) {
+        throw new Error("The board connection is not ready.");
+      }
+
+      return deleteBoardCard(connection, input);
+    },
+    onSuccess: (cardId) => {
+      queryClient.setQueryData<BoardSnapshot>(
+        boardQueryKey(code),
+        (current) => (current ? removeCard(current, cardId) : current),
+      );
+    },
+  });
+
   const retryConnection = useCallback(() => {
     const connection = connectionRef.current;
 
@@ -233,5 +274,6 @@ export function useBoardSession(code: string, participantId: string) {
     retryConnection,
     createCard: createCard.mutateAsync,
     updateCard: updateCard.mutateAsync,
+    deleteCard: deleteCard.mutateAsync,
   };
 }

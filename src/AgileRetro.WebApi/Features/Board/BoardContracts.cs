@@ -27,6 +27,10 @@ public sealed record UpdateBoardCardRequest(
     Guid CardId,
     string? Text);
 
+public sealed record DeleteBoardCardRequest(
+    Guid CardId
+);
+
 public sealed record BoardMembership(
     Guid SessionId,
     string Code,

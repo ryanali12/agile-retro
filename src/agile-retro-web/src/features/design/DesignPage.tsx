@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Drawer,
   Field,
   Input,
@@ -87,6 +88,7 @@ function DrawerForm() {
 export function DesignPage() {
   const [rightOpen, setRightOpen] = useState(false)
   const [leftOpen, setLeftOpen] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const { preference, resolvedTheme } = useTheme()
 
   return (
@@ -229,6 +231,17 @@ export function DesignPage() {
         </div>
       </Section>
 
+      <Section
+        title="Confirmation dialog"
+        description="A compact dialog for destructive or irreversible actions. Forms and detail views still use the Drawer."
+      >
+        <div className="flex flex-wrap gap-2">
+          <Button variant="danger" onClick={() => setConfirmOpen(true)}>
+            Delete card
+          </Button>
+        </div>
+      </Section>
+
       <Drawer
         isOpen={rightOpen}
         close={() => setRightOpen(false)}
@@ -255,6 +268,16 @@ export function DesignPage() {
           </Button>
         </div>
       </Drawer>
+
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title="Delete this card?"
+        description="This card will be removed from the board for everyone. This cannot be undone."
+        confirmLabel="Delete card"
+        tone="danger"
+        onConfirm={() => setConfirmOpen(false)}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   )
 }

@@ -56,6 +56,10 @@ export interface UpdateBoardCardInput {
   text: string;
 }
 
+export interface DeleteBoardCardInput {
+  cardId: string;
+}
+
 export async function joinBoard(
   connection: HubConnection,
   code: string,
@@ -83,3 +87,13 @@ export async function updateBoardCard(
 
   return BoardCardSchema.parseAsync(payload);
 }
+
+export async function deleteBoardCard(
+  connection: HubConnection,
+  input: DeleteBoardCardInput,
+): Promise<string> {
+  const payload = await connection.invoke("DeleteCard", input);
+  
+  return z.uuid().parseAsync(payload);
+}
+

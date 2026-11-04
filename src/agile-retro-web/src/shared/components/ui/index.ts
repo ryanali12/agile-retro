@@ -7,6 +7,11 @@ export {
   type ButtonVariant,
 } from './buttonStyles'
 export { Card, type CardProps } from './Card'
+export {
+  ConfirmDialog,
+  type ConfirmDialogProps,
+  type ConfirmDialogTone,
+} from './ConfirmDialog'
 export { Drawer, type DrawerProps } from './Drawer'
 export { Field, type FieldProps } from './Field'
 export { Input, type InputProps } from './Input'

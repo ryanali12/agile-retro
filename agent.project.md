@@ -44,13 +44,13 @@ Agreed design decisions:
 - Sessions and board content are persisted in PostgreSQL, so they survive process restarts.
 - Real-time collaboration uses SignalR.
 
-Current state: session creation/join, the four-column board, and card creation and author-only editing are implemented. Session lookup and participant validation use HTTP; the board hub provides the initial snapshot and persists and broadcasts card writes.
+Current state: session creation/join, the four-column board, and card creation, author-only editing, and author-only deletion are implemented. Session lookup and participant validation use HTTP; the board hub provides the initial snapshot and persists and broadcasts card writes.
 
 Still undecided, confirm before implementing:
 
 - Whether action items are a dedicated board column or a separate entity with its own lifecycle.
 - What a session's lifecycle is (open, closed/archived) and whether content is mutable after closing.
-- Whether a card may be deleted, and who may delete it. Editing is settled: only the card's author may edit their own card.
+- Whether deleted cards are retained in an audit trail. Deletion is currently permanent and author-only.
 - Whether retro "templates" (named column sets) are in scope.
 
 This file provides project-specific instructions and conventions for AI coding agents working in this repository.
@@ -206,7 +206,7 @@ All UI is built from Tailwind utilities and the primitives in `src/shared/compon
 
 ### Components
 
-- Primitives: `Button` (plus `buttonStyles` for links), `Input`, `Textarea`, `Label`, `Field`, `Card`, `Badge`, `Drawer`. Import them from `src/shared/components/ui`.
+- Primitives: `Button` (plus `buttonStyles` for links), `Input`, `Textarea`, `Label`, `Field`, `Card`, `Badge`, `Drawer`, `ConfirmDialog`. Import them from `src/shared/components/ui`.
 - App-level components such as `ThemeToggle` live in `src/shared/components/` and compose primitives.
 - Every component accepts `className` and merges it last with `cn()`, so callers adjust layout without fighting the defaults.
 - `Field` wires `id`, `aria-describedby` and `aria-invalid` to its child. Pass it exactly one form control.
@@ -215,6 +215,7 @@ All UI is built from Tailwind utilities and the primitives in `src/shared/compon
 ### Overlays: Drawer, not modal
 
 - Use `Drawer` for forms and detail views instead of a modal dialog. A sidebar keeps the board visible beside the panel.
+- Use `ConfirmDialog` for short, high-consequence confirmations such as deleting a card. It uses the native `<dialog>` element, so the browser handles the top layer, focus trapping, focus restoration, and Escape. Do not use it for forms or detail views.
 - Use `position="right"` (default) for primary flows and `position="left"` for navigation or filters.
 - The Drawer already handles Escape, overlay click (`closeOnClickOverlay`), body scroll locking, focus trapping, and focus restoration. Do not reimplement those in feature code.
 - It stays mounted to animate; while closed it is `aria-hidden` and `inert`, so its content is not focusable.
@@ -346,11 +347,12 @@ Routes are declared in `src/app/Routes.tsx` with `react-router`.
 
 - Columns are fixed and ordered: Went well, Didn't go well, Needs improvement, Action items (see `src/features/board/boardColumns.ts`). Accents are success, danger, warning, and primary respectively.
 - Use `Board` with `BoardCard[]`; it groups cards by `columnId` and renders the empty state per column. Cards authored by the current participant get a `You` badge and primary highlight by comparing `card.participantId` with the guard's participant id.
-- Cards are persisted in `BoardCard` and loaded through the hub's `JoinBoard`, which also subscribes the connection to the session group. Card creation goes through `CreateCard` and edits go through `UpdateCard`; the server broadcasts `CardCreated` / `CardUpdated` to the rest of the group.
-- Only the card's author may edit it. The client shows an Edit action on cards whose `participantId` matches the current participant, and the server scopes `UpdateCardAsync` to that participant, so a payload cannot edit another participant's card.
+- Cards are persisted in `BoardCard` and loaded through the hub's `JoinBoard`, which also subscribes the connection to the session group. Card creation goes through `CreateCard`, edits through `UpdateCard`, and deletion through `DeleteCard`; the server broadcasts `CardCreated` / `CardUpdated` / `CardDeleted` to the rest of the group.
+- Only the card's author may edit or delete it. The client shows the actions on cards whose `participantId` matches the current participant, and the server scopes the update and delete to that participant, so a payload cannot change another participant's card.
 - Active participants are tracked per live hub connection in `BoardPresence`. `JoinBoard` returns the current list, and the hub broadcasts `ParticipantsChanged` on join and disconnect. A participant with several tabs is listed once and disappears only when their last connection closes.
 - The board shows a connection badge (`Live`, `Connecting`, `Reconnecting`, `Offline`) instead of the old local-preview badge.
 - `CardTextDrawer` handles both create and edit modes with the same RHF + Zod validation; new cards are attributed to the connection's participant membership, and edits are only enabled while the connection is live.
+- Deleting a card opens `ConfirmDialog` and only calls the hub after confirmation. The dialog stays open with a pending state while the delete is in flight and surfaces hub errors in place.
 - The participants drawer (`ParticipantsDrawer`) shows who is online now, marks the current participant, and updates live while open.
 - `SessionPage` is a thin route wrapper; `SessionScreen` owns route state, while `SessionHeader`, `SessionBoardHeader`, `SessionConnectionBadge`, and `SessionBoardStates` render the page's regions.
 - The share drawer opens automatically exactly once after session creation via router state `{ created: true }`. Treat that flag as one-shot and clear it from history.
@@ -405,6 +407,7 @@ SignalR is the transport for the live board. `AddSignalR()` registers services a
 - `JoinBoard(code, participantId)` validates that the participant belongs to the session, binds the connection to that membership, adds it to the `session:{sessionId}` group, registers presence, and returns the board snapshot. Initial load and reconnect resync both use this method.
 - `CreateCard(columnKey, text)` is the write path for new cards. It resolves the author from the connection's membership, validates input, persists the card, and broadcasts the persisted `CardCreated` payload to the group (excluding the caller, which receives the method result).
 - `UpdateCard(cardId, text)` edits an existing card. It resolves the author from the connection's membership, updates only a card that matches both the session and that participant, and broadcasts the persisted `CardUpdated` payload to the group (excluding the caller, which receives the method result). A card owned by someone else is rejected.
+- `DeleteCard(cardId)` deletes an existing card. It resolves the author from the connection's membership, deletes only a card that matches both the session and that participant, and broadcasts `CardDeleted` with the card id to the group (excluding the caller, which receives the method result). A card that does not exist or belongs to someone else is rejected, so no broadcast is sent.
 - `BoardPresence` is a singleton because SignalR creates a hub instance per invocation. It keys connections by session and participant, deduplicates multiple tabs for one participant, and is cleaned up in `OnDisconnectedAsync`, which broadcasts `ParticipantsChanged`.
 - Never accept a participant id from a write payload as identity. The membership established by `JoinBoard` is the authorization context for later hub calls.
 - Broadcast only after the change has been persisted, and broadcast the persisted result (id, timestamps, author name) so every client converges.
@@ -524,7 +527,7 @@ There are no end-user accounts. In this project "authentication" means establish
 - Every session-scoped operation must verify server-side that the caller's participant belongs to the target session.
 - A participant may only read and modify content in sessions they have joined. A session id present in a request is never sufficient authorization on its own.
 - Do not rely on the frontend hiding controls, and do not rely on SignalR group membership alone. Group membership follows a verified join, and hub methods must re-check the same rules the HTTP endpoints apply.
-- `JoinBoard` validates membership and binds the connection to it; `CreateCard` and `UpdateCard` use that bound membership as their author and ignore any participant id in the payload. `UpdateCard` additionally scopes the update to cards authored by that participant.
+- `JoinBoard` validates membership and binds the connection to it; `CreateCard`, `UpdateCard`, and `DeleteCard` use that bound membership as their author and ignore any participant id in the payload. `UpdateCard` and `DeleteCard` additionally scope the change to cards authored by that participant.
 - Facilitator and participant are distinct roles. Which actions the facilitator alone may perform (closing the session, removing other participants' cards, deleting the session) is not decided yet; confirm before implementing. Role is stored server-side and never taken from the client.
 - If the participant token is carried in a cookie, protect state-changing endpoints against CSRF. If it is carried in a header, keep it out of URLs and logs.
 - Apply the same rules consistently across every endpoint and hub method that touches a session; a single unguarded route bypasses all of them.

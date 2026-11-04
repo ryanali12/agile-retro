@@ -114,6 +114,32 @@ public sealed class BoardHub(BoardService boardService, BoardPresence presence) 
         return card;
     }
 
+    public async Task<Guid> DeleteCard(DeleteBoardCardRequest? request)
+    {
+        if (request is null)
+            throw new HubException("Choose a card to delete.");
+
+        if (!TryGetMembership(out var membership))
+            throw new HubException("Join the board before deleting cards.");
+
+        if (request.CardId == Guid.Empty)
+            throw new HubException("Choose a card to delete.");
+
+        var deleted = await boardService.DeleteCardAsync(
+            membership,
+            request.CardId,
+            Context.ConnectionAborted);
+
+        if (!deleted)
+            throw new HubException("Card not found or you cannot delete it.");
+
+        await Clients
+            .GroupExcept(GroupName(membership.SessionId), Context.ConnectionId)
+            .SendAsync("CardDeleted", request.CardId);
+
+        return request.CardId;
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var leave = presence.Leave(Context.ConnectionId);

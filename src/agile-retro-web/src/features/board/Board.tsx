@@ -1,7 +1,7 @@
 import { Badge, Button } from "../../shared/components/ui";
 import { cn } from "../../shared/utils/cn";
 import { boardColumns } from "./boardColumns";
-import { PencilIcon, PlusIcon } from "../../shared/components/icons";
+import { PencilIcon, PlusIcon, TrashIcon } from "../../shared/components/icons";
 import { getInitials } from "../../shared/utils/initials";
 import type { BoardCard, BoardColumnId } from "./api";
 
@@ -10,6 +10,7 @@ interface BoardProps {
   currentParticipantId: string;
   onAddCard: (columnId: BoardColumnId) => void;
   onEditCard: (card: BoardCard) => void;
+  onDeleteCard: (card: BoardCard) => void;
   disabled?: boolean;
 }
 
@@ -17,10 +18,12 @@ function BoardCardItem({
   card,
   isCurrentParticipant,
   onEdit,
+  onDelete,
 }: {
   card: BoardCard;
   isCurrentParticipant: boolean;
   onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <article
@@ -35,27 +38,45 @@ function BoardCardItem({
         {card.text}
       </p>
 
-      <footer className="mt-3 flex items-center gap-2">
+      <footer className="mt-3 flex items-center gap-2 border-t border-border/60 pt-2.5">
         <span
           aria-hidden="true"
           className="grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary"
         >
           {getInitials(card.authorName)}
         </span>
-        <span className="truncate text-xs text-muted">{card.authorName}</span>
+        <span className="min-w-0 truncate text-xs text-muted">
+          {card.authorName}
+        </span>
         {isCurrentParticipant ? (
-          <span className="ml-auto flex shrink-0 items-center gap-1.5">
-            <Badge variant="primary">You</Badge>
+          <Badge variant="primary" className="shrink-0">
+            You
+          </Badge>
+        ) : null}
+        {isCurrentParticipant && (onEdit || onDelete) ? (
+          <span className="ml-auto flex shrink-0 items-center gap-0.5">
             {onEdit ? (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onEdit}
-                className="h-7 px-2 text-xs text-muted"
+                className="size-7 p-0 text-muted"
                 aria-label="Edit your card"
+                title="Edit card"
               >
                 <PencilIcon className="size-3.5" />
-                Edit
+              </Button>
+            ) : null}
+            {onDelete ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDelete}
+                className="size-7 p-0 text-muted hover:text-danger"
+                aria-label="Delete your card"
+                title="Delete card"
+              >
+                <TrashIcon className="size-3.5" />
               </Button>
             ) : null}
           </span>
@@ -70,14 +91,13 @@ export function Board({
   currentParticipantId,
   onAddCard,
   onEditCard,
+  onDeleteCard,
   disabled = false,
 }: BoardProps) {
   return (
     <div className="grid flex-1 auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {boardColumns.map((column) => {
-        const columnCards = cards.filter(
-          (card) => card.columnId === column.id,
-        );
+        const columnCards = cards.filter((card) => card.columnId === column.id);
 
         return (
           <section
@@ -131,9 +151,8 @@ export function Board({
                     isCurrentParticipant={
                       card.participantId === currentParticipantId
                     }
-                    onEdit={
-                      disabled ? undefined : () => onEditCard(card)
-                    }
+                    onEdit={disabled ? undefined : () => onEditCard(card)}
+                    onDelete={disabled ? undefined : () => onDeleteCard(card)}
                   />
                 ))
               )}

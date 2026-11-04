@@ -110,4 +110,19 @@ public sealed class BoardService(AgileRetroDbContext dbContext)
             card.Text,
             card.CreatedAt);
     }
+
+    public async Task<bool> DeleteCardAsync(
+        BoardMembership membership,
+        Guid cardId,
+        CancellationToken ct = default)
+    {
+        var deleted = await dbContext.BoardCard
+            .Where(card =>
+                card.Id == cardId &&
+                card.SessionId == membership.SessionId &&
+                card.ParticipantId == membership.ParticipantId)
+            .ExecuteDeleteAsync(ct);
+
+        return deleted > 0;
+    }
 }
