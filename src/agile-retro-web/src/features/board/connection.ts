@@ -4,7 +4,9 @@ import {
   type HubConnection,
 } from '@microsoft/signalr'
 
-const HUB_URL = `${import.meta.env.VITE_API_BASE_URL ?? ''}/hubs/board`
+// Default to the dev-server proxy (and same-origin production). Set
+// VITE_HUB_URL only when the hub lives on a different origin.
+const HUB_URL = import.meta.env.VITE_HUB_URL ?? '/hubs/board'
 
 /**
  * Creates a connection to the board hub. Call `start()` before use and keep the

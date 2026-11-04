@@ -1,17 +1,12 @@
-import { useState, type ComponentType, type FormEvent } from 'react'
-import {
-  Badge,
-  Button,
-  Card,
-  Drawer,
-  Field,
-  Input,
-} from '../shared/components/ui'
-import { cn } from '../shared/utils/cn'
+import { useState, type ComponentType } from "react";
+import { Badge, Button, Card } from "../../shared/components/ui";
+import { cn } from "../../shared/utils/cn";
+import CreateSessionDrawer from "./CreateSessionDrawer";
+import JoinByLinkDrawer from "./JoinByLinkDrawer";
 
 type IconProps = {
-  className?: string
-}
+  className?: string;
+};
 
 function ArrowRightIcon({ className }: IconProps) {
   return (
@@ -27,7 +22,7 @@ function ArrowRightIcon({ className }: IconProps) {
     >
       <path d="M5 12h14M13 6l6 6-6 6" />
     </svg>
-  )
+  );
 }
 
 function BoltIcon({ className }: IconProps) {
@@ -44,7 +39,7 @@ function BoltIcon({ className }: IconProps) {
     >
       <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z" />
     </svg>
-  )
+  );
 }
 
 function UsersIcon({ className }: IconProps) {
@@ -63,7 +58,7 @@ function UsersIcon({ className }: IconProps) {
       <circle cx="10" cy="7.5" r="3.5" />
       <path d="M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.5 4.2a3.5 3.5 0 0 1 0 6.6" />
     </svg>
-  )
+  );
 }
 
 function CheckIcon({ className }: IconProps) {
@@ -81,7 +76,7 @@ function CheckIcon({ className }: IconProps) {
       <circle cx="12" cy="12" r="9" />
       <path d="m8 12.5 2.5 2.5L16 9.5" />
     </svg>
-  )
+  );
 }
 
 function LockIcon({ className }: IconProps) {
@@ -99,86 +94,86 @@ function LockIcon({ className }: IconProps) {
       <rect x="4.5" y="10" width="15" height="10.5" rx="2" />
       <path d="M8 10V7.5a4 4 0 0 1 8 0V10" />
     </svg>
-  )
+  );
 }
 
 const steps = [
   {
-    title: 'Create a board',
-    body: 'Name the retro and open a session. The board is ready in seconds — no template wrangling.',
+    title: "Create a board",
+    body: "Name the retro and open a session. The board is ready in seconds — no template wrangling.",
   },
   {
-    title: 'Share one link',
-    body: 'Send the join link to your team. They pick a display name; no accounts, no invitations to manage.',
+    title: "Share one link",
+    body: "Send the join link to your team. They pick a display name; no accounts, no invitations to manage.",
   },
   {
-    title: 'Retro together',
-    body: 'Everyone adds cards at the same time. Votes and action items stay in sync as you go.',
+    title: "Retro together",
+    body: "Everyone adds cards at the same time. Votes and action items stay in sync as you go.",
   },
-]
+];
 
 const features: {
-  title: string
-  body: string
-  Icon: ComponentType<IconProps>
+  title: string;
+  body: string;
+  Icon: ComponentType<IconProps>;
 }[] = [
   {
-    title: 'Changes land instantly',
-    body: 'Cards appear for the whole team the moment they are added, without refreshing.',
+    title: "Changes land instantly",
+    body: "Cards appear for the whole team the moment they are added, without refreshing.",
     Icon: BoltIcon,
   },
   {
-    title: 'No accounts for the team',
-    body: 'Join with a display name. Nothing to install and nothing to remember.',
+    title: "No accounts for the team",
+    body: "Join with a display name. Nothing to install and nothing to remember.",
     Icon: UsersIcon,
   },
   {
-    title: 'Action items that stick',
-    body: 'Turn the important points into owners and follow-ups before the retro ends.',
+    title: "Action items that stick",
+    body: "Turn the important points into owners and follow-ups before the retro ends.",
     Icon: CheckIcon,
   },
   {
-    title: 'Private by link',
-    body: 'Only people holding the share link can open the board and add cards.',
+    title: "Private by link",
+    body: "Only people holding the share link can open the board and add cards.",
     Icon: LockIcon,
   },
-]
+];
 
 const previewColumns = [
   {
-    title: 'Went well',
-    dotClassName: 'bg-success',
+    title: "Went well",
+    dotClassName: "bg-success",
     cards: [
-      { author: 'AM', text: 'Pairing on the checkout flow' },
-      { author: 'JT', text: 'Reviews turned around same day' },
+      { author: "AM", text: "Pairing on the checkout flow" },
+      { author: "JT", text: "Reviews turned around same day" },
     ],
   },
   {
-    title: 'To improve',
-    dotClassName: 'bg-warning',
+    title: "To improve",
+    dotClassName: "bg-warning",
     cards: [
-      { author: 'SK', text: 'Flaky integration tests' },
-      { author: 'AM', text: 'Wednesday is meeting-heavy' },
+      { author: "SK", text: "Flaky integration tests" },
+      { author: "AM", text: "Wednesday is meeting-heavy" },
     ],
   },
   {
-    title: 'Action items',
-    dotClassName: 'bg-primary',
+    title: "Action items",
+    dotClassName: "bg-primary",
     cards: [
-      { author: 'JT', text: 'Split the CI pipeline' },
-      { author: 'SK', text: 'Timebox stand-up to 10 min' },
+      { author: "JT", text: "Split the CI pipeline" },
+      { author: "SK", text: "Timebox stand-up to 10 min" },
     ],
   },
-]
+];
 
 function SectionHeading({
   eyebrow,
   title,
   body,
 }: {
-  eyebrow: string
-  title: string
-  body?: string
+  eyebrow: string;
+  title: string;
+  body?: string;
 }) {
   return (
     <div className="flex max-w-2xl flex-col gap-2">
@@ -188,7 +183,7 @@ function SectionHeading({
       </h2>
       {body ? <p className="text-muted">{body}</p> : null}
     </div>
-  )
+  );
 }
 
 function BoardPreview() {
@@ -198,7 +193,9 @@ function BoardPreview() {
       <div className="relative rounded-2xl border border-border bg-surface p-3 shadow-2xl shadow-primary/10 sm:p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium">Sprint 42 retro</span>
+            <span className="truncate text-sm font-medium">
+              Sprint 42 retro
+            </span>
             <span className="text-xs text-muted">Facilitated by Ada</span>
           </div>
           <Badge variant="success" className="shrink-0 gap-1.5">
@@ -215,7 +212,7 @@ function BoardPreview() {
             >
               <div className="flex items-center gap-1.5 px-0.5">
                 <span
-                  className={cn('size-1.5 rounded-full', column.dotClassName)}
+                  className={cn("size-1.5 rounded-full", column.dotClassName)}
                 />
                 <span className="truncate text-[11px] font-medium">
                   {column.title}
@@ -248,108 +245,12 @@ function BoardPreview() {
         </div>
       </div>
     </div>
-  )
-}
-
-function CreateSessionDrawer({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean
-  onClose: () => void
-}) {
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-  }
-
-  return (
-    <Drawer
-      isOpen={isOpen}
-      close={onClose}
-      title="Create a session"
-      subTitle="Set up a board for your team"
-    >
-      <form className="flex h-full flex-col gap-6" onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-4">
-          <Field label="Session name" hint="For example, Sprint 42 retro." required>
-            <Input placeholder="Sprint 42 retro" name="sessionName" />
-          </Field>
-          <Field label="Your name" hint="Shown on the cards you add." required>
-            <Input placeholder="Ada Lovelace" name="displayName" autoComplete="name" />
-          </Field>
-        </div>
-
-        <p className="rounded-lg border border-border bg-surface-muted p-3 text-sm text-muted">
-          Preview only — session creation is the next step. This form is ready
-          for the API.
-        </p>
-
-        <div className="mt-auto flex justify-end gap-2 border-t border-border pt-4">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled>
-            Create session
-          </Button>
-        </div>
-      </form>
-    </Drawer>
-  )
-}
-
-function JoinSessionDrawer({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean
-  onClose: () => void
-}) {
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-  }
-
-  return (
-    <Drawer
-      isOpen={isOpen}
-      close={onClose}
-      title="Join a session"
-      subTitle="Use the link your facilitator shared"
-    >
-      <form className="flex h-full flex-col gap-6" onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-4">
-          <Field
-            label="Session link or code"
-            hint="Paste the full link or just the code."
-            required
-          >
-            <Input placeholder="agile-retro.app/join/brave-otter-42" name="sessionCode" />
-          </Field>
-          <Field label="Your name" hint="Shown on the cards you add." required>
-            <Input placeholder="Ada Lovelace" name="displayName" autoComplete="name" />
-          </Field>
-        </div>
-
-        <p className="rounded-lg border border-border bg-surface-muted p-3 text-sm text-muted">
-          Preview only — joining opens once sessions exist. This form is ready
-          for the API.
-        </p>
-
-        <div className="mt-auto flex justify-end gap-2 border-t border-border pt-4">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled>
-            Join session
-          </Button>
-        </div>
-      </form>
-    </Drawer>
-  )
+  );
 }
 
 export function HomePage() {
-  const [createOpen, setCreateOpen] = useState(false)
-  const [joinOpen, setJoinOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-20 pb-6">
@@ -358,8 +259,8 @@ export function HomePage() {
           <Badge variant="primary">Real-time retrospectives</Badge>
 
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-            Retros that end with{' '}
-            <span className="text-primary">action</span>, not sticky notes.
+            Retros that end with <span className="text-primary">action</span>,
+            not sticky notes.
           </h1>
 
           <p className="max-w-prose text-lg text-muted">
@@ -465,10 +366,7 @@ export function HomePage() {
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
       />
-      <JoinSessionDrawer
-        isOpen={joinOpen}
-        onClose={() => setJoinOpen(false)}
-      />
+      <JoinByLinkDrawer isOpen={joinOpen} onClose={() => setJoinOpen(false)} />
     </div>
-  )
+  );
 }

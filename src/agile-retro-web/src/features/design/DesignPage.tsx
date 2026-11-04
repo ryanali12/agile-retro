@@ -7,10 +7,10 @@ import {
   Field,
   Input,
   Textarea,
-} from '../shared/components/ui'
-import { cn } from '../shared/utils/cn'
-import { ThemeToggle } from '../shared/components/ThemeToggle'
-import { useTheme } from '../shared/theme'
+} from '../../shared/components/ui'
+import { cn } from '../../shared/utils/cn'
+import { ThemeToggle } from '../../shared/components/ThemeToggle'
+import { useTheme } from '../../shared/theme'
 
 const colors = [
   { name: 'bg', className: 'bg-bg' },
