@@ -38,16 +38,40 @@ The API listens on `http://localhost:5164`. OpenAPI is served at `/openapi/v1.js
 ```bash
 cd src/agile-retro-web
 npm install
+
+# Local API URL; .env is gitignored
+echo "VITE_API_URL=http://localhost:5164/api" > .env
+
 npm run dev
 ```
 
-The app is served on `http://localhost:5173`. Vite proxies `/api` and `/hubs` to the API, so no CORS configuration or API URL is needed in development.
+The app is served on `http://localhost:5173`. The frontend calls the API through `VITE_API_URL`; the API allows any origin in development.
 
 ## Design system
 
 The UI uses Tailwind CSS 4, with tokens defined in `src/agile-retro-web/src/index.css` and shared primitives (buttons, inputs, cards, badges, and the `Drawer` sidebar) in `src/agile-retro-web/src/shared/components/ui/`. A live reference is served at `http://localhost:5173/design`.
 
 The theme follows the operating system by default. The header toggle can pin Light or Dark per browser; the choice is remembered.
+
+## Session flow
+
+1. **Create a session** from the homepage. The drawer asks for a session name and your display name, validates with React Hook Form + Zod, and calls `POST /api/sessions`.
+2. On success you land on `/sessions/:code`, the full-width retro board, with the share drawer open so you can copy the link.
+3. Opening a share link without a stored participant shows the join screen. After joining, the board loads with your display name.
+4. The board has four columns: **Went well**, **Didn't go well**, **Needs improvement**, and **Action items**. Cards are added through a drawer. Your own cards are marked **You** and can be edited in place; other participants' cards are read-only.
+5. Board cards are stored in PostgreSQL. `JoinBoard` loads the board snapshot and subscribes the tab to the session; `CreateCard` and `UpdateCard` persist a card and broadcast it, so every participant sees the change without refreshing.
+6. The header shows how many participants are online. Open the participants drawer to see who is active; the list updates live as people join or leave, and multiple tabs from one person count once.
+
+The board shows a `Live` badge while connected and a `Reconnecting` / `Offline` state if the hub connection drops. The Vite dev server proxies `/hubs` to the API, so no extra environment variable is needed for realtime. Set `VITE_HUB_URL` only if the hub runs on another origin.
+
+## Frontend stack
+
+- React 19 + TypeScript + Vite
+- React Router
+- TanStack Query for API reads and mutations
+- React Hook Form + Zod for forms and validation
+- SignalR (`@microsoft/signalr`) for the live board connection
+- Tailwind CSS 4 with the shared design-system primitives
 
 ## Common commands
 
