@@ -1,7 +1,7 @@
 import {z} from "zod";
 import { ApiError } from "../../shared/api/client";
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = import.meta.env.VITE_API_URL ?? "APP_API_URL";
 
 export const CreateSessionSchema = z.object({
   name: z.string(),
