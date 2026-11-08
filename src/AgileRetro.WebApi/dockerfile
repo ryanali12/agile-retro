@@ -1,0 +1,11 @@
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+
+WORKDIR /workspace
+
+EXPOSE 5101
+
+ENV ASPNETCORE_ENVIRONMENT=Development
+ENV ASPNETCORE_HTTP_PORTS=5101
+
+CMD ["sleep", "infinity"]

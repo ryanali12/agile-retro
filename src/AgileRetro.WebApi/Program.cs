@@ -61,6 +61,10 @@ else
     app.UseHttpsRedirection();
 }
 
+app.MapGet("/", () =>
+{
+    return "Hello";
+});
 app.MapEndpoints(app.MapGroup("api"));
 app.MapHub<BoardHub>("/hubs/board");
 
