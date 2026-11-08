@@ -1,7 +1,17 @@
 @AgileRetro.WebApi_HostAddress = http://localhost:5164
+@sessionCode = ABC123
+@participantId = 00000000-0000-0000-0000-000000000000
 
 ### OpenAPI document (Development only)
 GET {{AgileRetro.WebApi_HostAddress}}/openapi/v1.json
 Accept: application/json
+
+### Issue a LiveKit access token
+POST {{AgileRetro.WebApi_HostAddress}}/api/sessions/{{sessionCode}}/livekit-token
+Content-Type: application/json
+
+{
+  "participantId": "{{participantId}}"
+}
 
 ###

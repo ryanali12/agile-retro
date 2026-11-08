@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Badge, Button } from "../../shared/components/ui";
 import { ThemeToggle } from "../../shared/components/ThemeToggle";
@@ -11,6 +12,8 @@ interface SessionHeaderProps {
   participantsCount: number;
   onShare: () => void;
   onShowParticipants: () => void;
+  /** Room controls, such as the microphone toggle, shown before participants. */
+  audioControls?: ReactNode;
 }
 
 export function SessionHeader({
@@ -20,6 +23,7 @@ export function SessionHeader({
   participantsCount,
   onShare,
   onShowParticipants,
+  audioControls,
 }: SessionHeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-surface/90 backdrop-blur">
@@ -50,6 +54,7 @@ export function SessionHeader({
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {audioControls}
           <Button
             variant="secondary"
             size="sm"

@@ -58,3 +58,39 @@ export async function getSessionByCode(code: string){
     
     return GetSessionByCodeSchema.parseAsync(responseBody)
 }
+
+export const LiveKitTokenSchema = z.object({
+  token: z.string(),
+  url: z.string(),
+  roomName: z.string(),
+  expiresAt: z.string()
+})
+
+export type LiveKitToken = z.infer<typeof LiveKitTokenSchema>
+
+/**
+ * Requests a LiveKit access token for a participant who has already joined the
+ * session. The response includes the server URL, so callers should prefer it
+ * over a build-time value.
+ */
+export async function getLiveKitToken(
+  code: string,
+  participantId: string
+): Promise<LiveKitToken> {
+  const response = await fetch(
+    `${apiUrl}/sessions/${encodeURIComponent(code)}/livekit-token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ participantId })
+    }
+  )
+
+  if (!response.ok) throw new ApiError(response);
+
+  const responseBody = await response.json();
+
+  return LiveKitTokenSchema.parseAsync(responseBody);
+}

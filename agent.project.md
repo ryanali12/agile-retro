@@ -11,9 +11,10 @@ This repository contains a software application consisting of:
 - **Validation:** FluentValidation on the backend; Zod with React Hook Form on the frontend
 - **Authentication:** None for end users; participants join anonymously with a share link and a display name (see [Authentication and Authorization](#authentication-and-authorization))
 - **Realtime:** SignalR
+- **Media:** LiveKit for optional audio/video rooms; the API issues participant tokens and the frontend uses `livekit-client`
 - **Architecture:** Backend: a single ASP.NET Core minimal API project with explicit endpoint discovery; frontend: feature-based React SPA (see [Frontend Architecture](#frontend-architecture))
 - **Testing:** Not yet established
-- **Infrastructure / Orchestration:** Local PostgreSQL via `compose.yaml`; the frontend and API can be hosted separately with `Cors:AllowedOrigins` configured
+- **Infrastructure / Orchestration:** Docker Compose for local and production stacks. Production runs PostgreSQL, the API, a static frontend container, and nginx.
 - **Frontend routing:** `react-router` (`BrowserRouter` + `Routes`)
 - **Realtime client:** `@microsoft/signalr`
 
@@ -109,13 +110,19 @@ The repository is organized as follows:
 │   │   ├── Data/
 │   │   │   └── AgileRetroDbContext.cs EF Core context and migrations
 │   │   ├── Entities/              Session, Participant, BoardCard, fixed ColumnKey values
-│   │   ├── Features/              Endpoint and board feature logic, including BoardPresence
+│   │   ├── Features/
+│   │   │   ├── Board/             Board service, presence, and contracts
+│   │   │   ├── LiveKit/           Token options, issuer, and token endpoint
+│   │   │   ├── Participant/       Join and get participant endpoints
+│   │   │   └── Session/           Create and get session endpoints
 │   │   ├── Hubs/
 │   │   │   └── BoardHub.cs        JoinBoard snapshot, card create/update writes, and presence changes
 │   │   ├── appsettings.json       Base configuration
 │   │   ├── appsettings.Development.json
 │   │   ├── Properties/
 │   │   │   └── launchSettings.json Local launch profiles and URLs
+│   │   ├── dockerfile              Dev container (SDK + dotnet watch)
+│   │   ├── dockerfile.prod         Production image with an EF migration bundle
 │   │   └── AgileRetro.WebApi.http  Manual API request samples
 │   │
 │   └── agile-retro-web/           Vite + React + TypeScript frontend
@@ -124,21 +131,27 @@ The repository is organized as follows:
 │       │   ├── features/
 │       │   │   ├── home/          Homepage and create/join-by-link drawers
 │       │   │   ├── design/        Design-system reference page
-│       │   │   ├── session/       Session page shell, guard, header, share
+│       │   │   ├── session/       Session shell, guard, context, queries, header, share
 │       │   │   ├── board/         Board UI, participants, hub client
 │       │   │   └── participant/   Participant storage and join drawer
 │       │   ├── shared/
-│       │   │   ├── api/           API base URL and error type
+│       │   │   ├── api/           API error type and HTTP helpers
 │       │   │   ├── components/    ThemeToggle, icons, and UI primitives
 │       │   │   ├── theme/         Theme preference provider and helpers
 │       │   │   └── utils/         cn() and initials helpers
 │       │   └── index.css          Tailwind entry point and design tokens
 │       ├── public/
-│       ├── vite.config.ts         Dev/preview proxy for /api and /hubs
+│       ├── dockerfile              Dev container (Node)
+│       ├── dockerfile.prod         Build stage + static nginx runtime
+│       ├── nginx.conf              Static SPA server config
+│       ├── env.sh                  Startup replacement of APP_* placeholders
+│       ├── vite.config.ts          Dev proxy for /api and /hubs
 │       └── package.json
 │
-├── compose.yaml                   Local PostgreSQL service
-├── .env.example                   Copy to .env (gitignored) for local credentials
+├── compose.yaml                   Local dev stack (PostgreSQL, API, frontend)
+├── compose.prod.yml               Production stack (PostgreSQL, API, frontend, nginx)
+├── nginx.conf                     Production reverse proxy
+├── .env.example                   Copy to .env (gitignored) for Compose values
 ├── agents.md                      General agent instructions
 ├── agent.project.md               Project-specific agent instructions (this file)
 └── README.md                      Human setup and command reference
@@ -183,7 +196,12 @@ The API launch profiles (`src/AgileRetro.WebApi/Properties/launchSettings.json`)
 - HTTP: `http://localhost:5164`
 - HTTPS: `https://localhost:7272`
 
-Development uses the Vite dev-server proxy. For a separate production origin, set `VITE_API_URL` and `VITE_HUB_URL` at build time and add the frontend origin to `Cors:AllowedOrigins` on the API. Do not hard-code the API host into source files, and do not commit local `.env` files.
+Two local workflows are supported:
+
+1. **Docker Compose.** `docker compose up --build` starts PostgreSQL, the API (`dotnet watch`, container port `5101`, host `WEB_API_PORT`), and Vite (container port `5173`, host `WEB_APP_PORT`). Root `.env` supplies `POSTGRES_*`, `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, and `CORS_ALLOWED_ORIGINS_0`. The frontend URLs must point at the host-published API port, and the CORS origin must match the host-published frontend port.
+2. **Host processes.** Start PostgreSQL with `docker compose up -d db`, run the API with `dotnet run --launch-profile http`, and run Vite with `npm run dev`. Set `VITE_API_URL=http://localhost:5164/api` and `VITE_HUB_URL=http://localhost:5164/hubs` in `src/agile-retro-web/.env`.
+
+`vite.config.ts` proxies `/api` and `/hubs` to `http://localhost:5164`; the proxy applies when the client uses relative URLs. Absolute `VITE_*` URLs bypass it and require the API CORS policy to allow the Vite origin. Do not commit local `.env` files.
 
 ---
 
@@ -259,9 +277,9 @@ The frontend has an app shell (`src/app/App.tsx`), route definitions (`src/app/R
 - Feature-specific code goes in `src/features/<feature>/`; keep it within the feature that owns it.
 - Route-level pages live in their feature (for example `src/features/session/SessionPage.tsx`) and compose feature components.
 - Shared code goes in `src/shared/` only when it is genuinely used in more than one place.
-- API modules import `apiBaseUrl` from `src/shared/api/baseUrl.ts`. It defaults to relative `/api`, which uses the Vite proxy in development and the same origin in production; `VITE_API_URL` overrides it at build time for a separate API origin. Do not hard-code the API host in source files, and do not commit local `.env` files.
-- The SignalR client defaults to relative `/hubs/board`; set `VITE_HUB_URL` at build time when the hub is on another origin.
-- Cross-origin deployments must list the frontend origin in `Cors:AllowedOrigins`. The API sends no CORS headers when the list is empty.
+- API modules read `import.meta.env.VITE_API_URL` and fall back to the literal `APP_API_URL`, which the production web container replaces at startup. Set `VITE_API_URL` in `src/agile-retro-web/.env` for local development. Do not hard-code the API host in source files, and do not commit local `.env` files.
+- The SignalR client builds its URL from `VITE_HUB_URL` (or the `APP_HUB_URL` fallback) plus `/board`. Local development points it at `http://localhost:5164/hubs`; the production web container points it at `/hubs`.
+- Cross-origin deployments must list the frontend origin in `Cors:AllowedOrigins`. The API sends no CORS headers when the list is empty. The production Compose stack calls the API through nginx on the same origin, so CORS is not needed there.
 
 - Keep feature-specific code within the feature that owns it.
 - Move code into shared locations only when it is genuinely reusable.
@@ -374,7 +392,7 @@ Routes are declared in `src/app/Routes.tsx` with `react-router`.
 - Validation: FluentValidation, registered by assembly scanning in `Program.cs`
 - Authentication and authorization: no end-user accounts; anonymous participation is described in [Authentication and Authorization](#authentication-and-authorization)
 
-`AgileRetroDbContext` is registered in `Program.cs` using the `ConnectionStrings:AgileRetro` setting. The connection string must be present or startup fails with an explanatory error; it is stored in user secrets for local development, never in `appsettings*.json`.
+`AgileRetroDbContext` is registered in `Program.cs` using the `ConnectionStrings:AgileRetro` setting. The connection string must be present or startup fails with an explanatory error. Use user secrets for local development and `ConnectionStrings__AgileRetro` for containers; do not add new connection strings or other secrets to `appsettings*.json`.
 
 Keep validators next to their endpoint and return `TypedResults.BadRequest` with the validation dictionary when a request is invalid.
 
@@ -402,10 +420,11 @@ When adding a feature:
 
 ### Cross-origin and proxies
 
-- Development uses the Vite dev/preview proxy for `/api` and `/hubs`; the proxy target comes from `API_PROXY_TARGET` and defaults to `http://localhost:5164`.
-- Production uses relative `/api` and `/hubs/board` when the app is same-origin with the API. When the API is on another origin, set `VITE_API_URL` and `VITE_HUB_URL` at build time.
-- The API only emits CORS headers for origins listed in `Cors:AllowedOrigins`. Keep the list empty for same-origin deployments, and configure it through environment variables in production (`Cors__AllowedOrigins__0`).
-- The Vite proxy is not a production feature. Add a reverse proxy only when the deployment topology requires one; do not rely on the Vite server in production.
+- **Host development:** Vite proxies `/api` and `/hubs` to `http://localhost:5164`. The proxy applies to relative client URLs; absolute `VITE_API_URL` / `VITE_HUB_URL` values bypass it.
+- **Docker development:** Compose passes `WEB_APP_API_URL` and `WEB_APP_HUB_URL` into the web container as `VITE_API_URL` and `VITE_HUB_URL`, using the host-published API port. The API's `Cors:AllowedOrigins` must include the host-published frontend origin.
+- **Production:** `nginx.conf` serves the frontend and proxies `/api/` and `/hubs/` to the API. The web container's `env.sh` rewrites the `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders in the built JavaScript at startup from `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, and `LIVEKIT_URL`. Use `/api` and `/hubs` for the normal same-origin deployment, or absolute URLs for a direct cross-origin deployment.
+- The API only emits CORS headers for origins listed in `Cors:AllowedOrigins`. Leave the list empty for same-origin deployments; when Compose passes `Cors__AllowedOrigins__0`, use a valid absolute origin or remove the environment mapping rather than setting it to an empty or placeholder value.
+- The Vite proxy is not a production feature. Do not rely on the Vite server in production; the production image serves static files through nginx.
 
 ---
 
@@ -424,7 +443,23 @@ SignalR is the transport for the live board. `AddSignalR()` registers services a
 - The hub is not a security boundary on its own. Membership is revalidated on join, and the same session rules apply to hub methods and HTTP endpoints.
 - Hub payloads and client handlers should use the same contract types. The frontend validates hub payloads with Zod in `src/features/board/api.ts`.
 - Keep the connection lifecycle in `src/features/board/useBoardSession.ts`: one connection per mounted session, `JoinBoard` on connect and reconnect, and cache updates for broadcast events.
-- The Vite dev server proxies `/hubs` to the API, so the default hub URL is `/hubs/board`. Set `VITE_HUB_URL` only when the hub is on another origin.
+- The hub URL is `VITE_HUB_URL` plus `/board` in development, or `APP_HUB_URL` plus `/board` in the production web container. Both resolve to `/hubs/board` when the app is served through nginx; use an absolute URL only when the hub is on another origin.
+
+### LiveKit
+
+LiveKit is optional audio/video. Keep token issuance out of the SignalR hub; the hub returns board state only, and the token endpoint is an HTTP API.
+
+- `POST /api/sessions/{code}/livekit-token` accepts `{ participantId }` and returns `{ token, url, roomName, expiresAt }`.
+- The endpoint calls `BoardService.FindMembershipAsync`, the same membership check as `JoinBoard`. Return `404` for an unknown session or participant; never issue a token for a non-member.
+- `LiveKitTokenService` signs tokens scoped to `session-{sessionId}` and identifies participants by participant id. Grants allow publish and subscribe only; keep room administration and data-message grants off unless a feature needs them.
+- `LiveKit:ApiKey`, `LiveKit:ApiSecret`, and `LiveKit:Url` come from configuration. The secret must be at least 32 bytes. `LiveKit:TokenLifetime` defaults to one hour. Missing or invalid credentials produce `503` instead of preventing the board from starting.
+- Never log tokens or return the API secret. Use user secrets locally and `LiveKit__*` environment variables in containers.
+- Clients refresh tokens through the endpoint before `expiresAt`; do not tie token lifetime to the SignalR connection.
+- The frontend builds the token query in `src/features/session/sessionQueries.ts` and runs it from `SessionPageGuardDataProvider` once the participant is known. The session data context exposes it; token failures are non-blocking, so the board works without LiveKit.
+- A LiveKit identity is unique per room, so a second connection with the same identity replaces the first. If multi-tab voice becomes a requirement, use a per-connection identity and keep the participant id in token metadata.
+- The client should use the `url` returned with the token. `VITE_LIVEKIT_URL` / `APP_LIVEKIT_URL` are fallbacks for deployments where the server URL is not configured.
+- Media controls live inside `LiveKitRoom`. The session header hosts `MicrophoneToggle` (`useLocalParticipant` + `setMicrophoneEnabled`) and `RoomAudioRenderer` plays subscribed remote audio; keep both inside the room provider so they follow reconnects.
+- Documented endpoints carry OpenAPI metadata (`.WithSummary`, `.WithDescription`, `.Accepts`, `.Produces`). `GenerateDocumentationFile` is enabled, so XML comments appear in the OpenAPI document.
 
 ---
 
@@ -579,12 +614,29 @@ Rules:
 - Keep environment-specific settings outside application code where appropriate.
 - Provide sensible defaults for non-sensitive configuration.
 - Document required configuration values without exposing their actual secrets.
+- Local and production Compose values live in the root `.env`; frontend host development values live in `src/agile-retro-web/.env`. Both are gitignored.
+- Containers receive the database connection through `ConnectionStrings__AgileRetro`, allowed origins through `Cors__AllowedOrigins__0`, and LiveKit credentials through `LiveKit__ApiKey` / `LiveKit__ApiSecret`.
+- Keep `LiveKit:ApiSecret` server-side. Never put it in `appsettings*.json`, frontend variables, or logs.
 
 ---
 
 # Infrastructure and Deployment
 
 Follow the infrastructure and deployment conventions established by the project.
+
+## Current setup
+
+- `compose.yaml` is the local development stack: PostgreSQL, the API image running `dotnet watch`, and the frontend image running Vite. Source directories are bind-mounted for live reload.
+- `compose.prod.yml` is the production stack: PostgreSQL, the published API image (`ghcr.io/ryanali12/agile-retro-web-api`), the published frontend image (`ghcr.io/ryanali12/agile-retro-web`), and nginx (`nginx:1.30.6-alpine`).
+- `nginx.conf` at the repository root is the production entrypoint. It proxies `/api/` and `/hubs/` to the API container, including WebSocket upgrade headers and long read/send timeouts, and proxies everything else to the frontend container. Users should load the app through this proxy so the API and hub stay same-origin; do not send production traffic to the frontend container directly.
+- `src/agile-retro-web/dockerfile.prod` builds the SPA and copies it into an nginx image. `src/agile-retro-web/nginx.conf` serves the static files with SPA fallback (`try_files ... /index.html`).
+- `src/agile-retro-web/env.sh` runs from the nginx entrypoint and replaces the literal `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders in the built JavaScript with the matching environment variables. Compose sets those from `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, and `LIVEKIT_URL`. Use `/api` and `/hubs` for the same-origin nginx deployment, or absolute URLs for a direct cross-origin deployment.
+- `src/AgileRetro.WebApi/dockerfile.prod` publishes the API in Release mode and bundles EF Core migrations as `/app/efbundle`. Apply them after starting the production stack with `docker compose -f compose.prod.yml exec web_api ./efbundle`.
+- LiveKit is not a Compose service. Point `LIVEKIT_URL` at a self-hosted server or LiveKit Cloud, and give the API its `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`. The endpoint returns `503` when credentials are absent.
+- Production configuration comes from the root `.env` file (gitignored): `POSTGRES_*`, `POSTGRES_CONNECTION_STRING`, `WEB_API_PORT`, `WEB_APP_PORT`, `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, `CORS_ALLOWED_ORIGINS_0`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`. The API reads `ConnectionStrings__AgileRetro`, `Cors__AllowedOrigins__0`, and `LiveKit__*` from its container environment.
+- The production Compose file publishes PostgreSQL, API, frontend, and nginx ports. For a real deployment, expose only nginx (or terminate TLS in front of it) and remove or firewall the internal service ports.
+
+## Rules
 
 - Reuse existing resource definitions and configurations.
 - Avoid duplicate infrastructure definitions.
@@ -653,8 +705,16 @@ Use the actual commands and scripts defined by the repository. The commands belo
 
 ```bash
 # Local database
-docker compose up -d --wait
+docker compose up -d db
 docker compose down
+
+# Full local stack (PostgreSQL, API, frontend)
+docker compose up --build
+
+# Production stack
+docker compose -f compose.prod.yml pull
+docker compose -f compose.prod.yml up -d
+docker compose -f compose.prod.yml exec web_api ./efbundle
 
 # Backend build
 dotnet build src/AgileRetro.WebApi/AgileRetro.WebApi.csproj

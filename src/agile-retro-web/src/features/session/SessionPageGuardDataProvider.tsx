@@ -1,35 +1,25 @@
-import { StatusCodes } from "http-status-codes";
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { ApiError } from "../../shared/api/client";
+import { useState, type ReactNode } from "react";
 import { useQueries } from "@tanstack/react-query";
+import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
+import { useParams } from "react-router";
 import { useSessionParticipants } from "../participant/SessionParticipantProvider";
-import { Link, useParams } from "react-router";
-import { getSessionByCode } from "./api";
-import { getParticipantByIdAndSessionCode } from "../participant/api";
-import { Button, buttonStyles } from "../../shared/components/ui";
-import JoinSessionDrawer from "../participant/JoinSessionDrawer";
-import { SessionStatusScreen } from "./SessionStatusScreen";
+import {
+  JoinRequiredScreen,
+  MissingLinkScreen,
+  RejoinSessionScreen,
+  RetryScreen,
+  SessionLoadingScreen,
+  SessionNotFoundScreen,
+} from "./SessionGuardStates";
+import { SessionPageDataProvider } from "./SessionPageDataProvider";
+import {
+  isNotFound,
+  liveKitTokenQueryOptions,
+  participantQueryOptions,
+  sessionByCodeQueryOptions,
+} from "./sessionQueries";
 
-type SessionData = {
-  id: string;
-  code: string;
-  name: string;
-  participantName: string;
-  participantId: string;
-};
-
-const SessionDataProvider = createContext<SessionData | null>(null);
-
-function BackHomeAction() {
-  return (
-    <Link
-      to="/"
-      className={buttonStyles({ variant: "secondary", size: "md" })}
-    >
-      Back to home
-    </Link>
-  );
-}
+const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "APP_LIVEKIT_URL";
 
 function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
   const { code } = useParams();
@@ -38,44 +28,26 @@ function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
   const participantId = sessionCode ? getParticipantId(sessionCode) : undefined;
   const [joinOpen, setJoinOpen] = useState(true);
 
-  const retryUnlessNotFound = (failureCount: number, error: Error) =>
-    !(error instanceof ApiError && error.status === StatusCodes.NOT_FOUND) &&
-    failureCount < 2;
-
-  const [sessionQuery, participantQuery] = useQueries({
+  const [sessionQuery, participantQuery, liveKitTokenQuery] = useQueries({
     queries: [
-      {
-        queryKey: ["sessionByCode", sessionCode],
-        queryFn: () => getSessionByCode(sessionCode!),
-        enabled: !!sessionCode,
-        retry: retryUnlessNotFound,
-      },
-      {
-        queryKey: ["participantByIdAndSessionCode", sessionCode, participantId],
-        queryFn: () =>
-          getParticipantByIdAndSessionCode(sessionCode!, participantId!),
-        enabled: !!sessionCode && !!participantId,
-        retry: retryUnlessNotFound,
-      },
+      sessionByCodeQueryOptions(sessionCode),
+      participantQueryOptions(sessionCode, participantId),
+      liveKitTokenQueryOptions(sessionCode, participantId),
     ],
   });
 
+  const rejoinSession = (sessionCode: string) => {
+    removeParticipant(sessionCode);
+    setJoinOpen(true);
+  };
+
   if (!sessionCode) {
-    return (
-      <SessionStatusScreen
-        badge="Missing link"
-        tone="danger"
-        title="This session link is incomplete"
-        description="Open the link your facilitator shared, or start a new session."
-        action={<BackHomeAction />}
-      />
-    );
+    return <MissingLinkScreen />;
   }
 
   if (sessionQuery.isLoading) {
     return (
-      <SessionStatusScreen
-        loading
+      <SessionLoadingScreen
         title="Loading session"
         description="Opening the board..."
       />
@@ -83,32 +55,13 @@ function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
   }
 
   if (sessionQuery.isError) {
-    if (
-      sessionQuery.error instanceof ApiError &&
-      sessionQuery.error.status === StatusCodes.NOT_FOUND
-    ) {
-      return (
-        <SessionStatusScreen
-          badge="Not found"
-          tone="danger"
-          title="Session not found"
-          description="The link may be mistyped or the session may have been removed."
-          action={<BackHomeAction />}
-        />
-      );
-    }
-
-    return (
-      <SessionStatusScreen
-        badge="Error"
-        tone="danger"
+    return isNotFound(sessionQuery.error) ? (
+      <SessionNotFoundScreen />
+    ) : (
+      <RetryScreen
         title="Unable to load this session"
         description="The board could not be reached. Check your connection and try again."
-        action={
-          <Button variant="secondary" onClick={() => sessionQuery.refetch()}>
-            Try again
-          </Button>
-        }
+        onRetry={() => sessionQuery.refetch()}
       />
     );
   }
@@ -116,42 +69,24 @@ function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
   const session = sessionQuery.data;
 
   if (!session) {
-    return (
-      <SessionStatusScreen
-        badge="Not found"
-        tone="danger"
-        title="Session not found"
-        description="The link may be mistyped or the session may have been removed."
-        action={<BackHomeAction />}
-      />
-    );
+    return <SessionNotFoundScreen />;
   }
 
-  // Participant has not joined this session yet.
   if (!participantId) {
     return (
-      <>
-        <SessionStatusScreen
-          badge="Join required"
-          title={`Join ${session.name}`}
-          description="Add your display name to open the board and start adding cards."
-          action={
-            <Button onClick={() => setJoinOpen(true)}>Join this session</Button>
-          }
-        />
-        <JoinSessionDrawer
-          code={session.code}
-          isOpen={joinOpen}
-          onClose={() => setJoinOpen(false)}
-        />
-      </>
+      <JoinRequiredScreen
+        sessionName={session.name}
+        sessionCode={session.code}
+        isJoinOpen={joinOpen}
+        onOpenJoin={() => setJoinOpen(true)}
+        onCloseJoin={() => setJoinOpen(false)}
+      />
     );
   }
 
   if (participantQuery.isLoading) {
     return (
-      <SessionStatusScreen
-        loading
+      <SessionLoadingScreen
         title="Checking your spot"
         description="Making sure you can add cards to this session."
       />
@@ -159,44 +94,13 @@ function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
   }
 
   if (participantQuery.isError) {
-    if (
-      participantQuery.error instanceof ApiError &&
-      participantQuery.error.status === StatusCodes.NOT_FOUND
-    ) {
-      return (
-        <SessionStatusScreen
-          badge="Join again"
-          tone="warning"
-          title="Your spot in this session expired"
-          description="Join again with your display name to get back to the board."
-          action={
-            <Button
-              onClick={() => {
-                removeParticipant(session.code);
-                setJoinOpen(true);
-              }}
-            >
-              Join this session
-            </Button>
-          }
-        />
-      );
-    }
-
-    return (
-      <SessionStatusScreen
-        badge="Error"
-        tone="danger"
+    return isNotFound(participantQuery.error) ? (
+      <RejoinSessionScreen onRejoin={() => rejoinSession(session.code)} />
+    ) : (
+      <RetryScreen
         title="Unable to check your spot"
         description="We could not confirm your participant details. Try again."
-        action={
-          <Button
-            variant="secondary"
-            onClick={() => participantQuery.refetch()}
-          >
-            Try again
-          </Button>
-        }
+        onRetry={() => participantQuery.refetch()}
       />
     );
   }
@@ -204,51 +108,31 @@ function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
   const participant = participantQuery.data;
 
   if (!participant) {
-    return (
-      <SessionStatusScreen
-        badge="Join again"
-        tone="warning"
-        title="Your spot in this session expired"
-        description="Join again with your display name to get back to the board."
-        action={
-          <Button
-            onClick={() => {
-              removeParticipant(session.code);
-              setJoinOpen(true);
-            }}
-          >
-            Join this session
-          </Button>
-        }
-      />
-    );
+    return <RejoinSessionScreen onRejoin={() => rejoinSession(session.code)} />;
   }
 
   return (
-    <SessionDataProvider.Provider
-      value={{
-        id: session.id,
-        name: session.name,
-        code: session.code,
-        participantId: participant.id,
-        participantName: participant.name,
-      }}
+    <LiveKitRoom
+      audio={true}
+      video={false}
+      serverUrl={liveKitTokenQuery.data?.url ?? livekitUrl}
+      token={liveKitTokenQuery.data?.token}
     >
-      {children}
-    </SessionDataProvider.Provider>
+      <RoomAudioRenderer />
+      <SessionPageDataProvider
+        value={{
+          id: session.id,
+          name: session.name,
+          code: session.code,
+          participantId: participant.id,
+          participantName: participant.name,
+          livekitToken: liveKitTokenQuery.data ?? null,
+        }}
+      >
+        {children}
+      </SessionPageDataProvider>
+    </LiveKitRoom>
   );
-}
-
-export function useSessionPageDataProvider() {
-  const context = useContext(SessionDataProvider);
-
-  if (!context) {
-    throw new Error(
-      "useSessionPageDataProvider must be used within SessionPageGuardDataProvider",
-    );
-  }
-
-  return context;
 }
 
 export default SessionPageGuardDataProvider;

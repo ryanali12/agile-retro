@@ -2,6 +2,7 @@ using System.Reflection;
 using AgileRetro.WebApi.Data;
 using AgileRetro.WebApi.Endpoint;
 using AgileRetro.WebApi.Features.Board;
+using AgileRetro.WebApi.Features.LiveKit;
 using AgileRetro.WebApi.Hubs;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -45,6 +46,9 @@ builder.Services.AddDbContext<AgileRetroDbContext>(options =>
 builder.Services.AddSignalR();
 builder.Services.AddScoped<BoardService>();
 builder.Services.AddSingleton<BoardPresence>();
+builder.Services.Configure<LiveKitOptions>(
+    builder.Configuration.GetSection(LiveKitOptions.SectionName));
+builder.Services.AddSingleton<LiveKitTokenService>();
 builder.Services.AddEndpoints(typeof(Program).Assembly);
 
 var app = builder.Build();

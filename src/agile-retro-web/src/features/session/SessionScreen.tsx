@@ -12,10 +12,11 @@ import {
   SessionConnectionLostState,
 } from "./SessionBoardStates";
 import { SessionHeader } from "./SessionHeader";
-import { useSessionPageDataProvider } from "./SessionPageGuardDataProvider";
+import { useSessionPageDataProvider } from "./SessionPageDataContext";
 import { ShareSessionDrawer } from "./ShareSessionDrawer";
 import { useBoardSession } from "../board/useBoardSession";
 import type { BoardCard, BoardColumnId } from "../board/api";
+import { MicrophoneToggle } from "./MicrophoneToggle";
 
 type CreatedNavigationState = { created?: boolean } | null | undefined;
 
@@ -140,6 +141,7 @@ export function SessionScreen() {
         participantsCount={participants.length}
         onShare={() => setShareOpen(true)}
         onShowParticipants={() => setParticipantsOpen(true)}
+        audioControls={<MicrophoneToggle />}
       />
 
       <main className="mx-auto flex w-full max-w-[100rem] flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
