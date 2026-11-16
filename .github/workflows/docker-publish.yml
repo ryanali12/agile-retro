@@ -21,10 +21,10 @@ jobs:
     strategy:
       matrix:
         project:
-          - name: agile-retro-web-api
+          - name: ${{ github.repository_owner }}/agile-retro-web-api
             context: ./src/AgileRetro.WebApi
             dockerfile: ./src/AgileRetro.WebApi/dockerfile.prod
-          - name: agile-retro-web
+          - name: ${{ github.repository_owner }}/agile-retro-web
             context: ./src/agile-retro-web
             dockerfile: "./src/agile-retro-web/dockerfile.prod"
 
