@@ -13,12 +13,12 @@ This repository contains a software application consisting of:
 - **Realtime:** SignalR
 - **Media:** LiveKit for optional audio/video rooms; the API issues participant tokens and the frontend uses `livekit-client`
 - **Architecture:** Backend: a single ASP.NET Core minimal API project with explicit endpoint discovery; frontend: feature-based React SPA (see [Frontend Architecture](#frontend-architecture))
-- **Testing:** Not yet established
+- **Testing:** xUnit integration tests for the HTTP API and SignalR board hub, backed by Testcontainers PostgreSQL; no frontend test runner yet
 - **Infrastructure / Orchestration:** Docker Compose for local and production stacks. Production runs PostgreSQL, the API, a static frontend container, and nginx.
 - **Frontend routing:** `react-router` (`BrowserRouter` + `Routes`)
 - **Realtime client:** `@microsoft/signalr`
 
-Items marked "not yet established" have no implementation in the repository and no committed decision behind them. Do not assume or introduce a choice for them; confirm with the user before adding a test framework or introducing infrastructure beyond a local PostgreSQL instance.
+The frontend has no test runner yet. Selecting one (Vitest is the natural fit with Vite) is not yet decided; confirm with the user before adding it. The backend integration suite uses Docker through Testcontainers, so Docker must be running when tests execute.
 
 ---
 
@@ -124,6 +124,13 @@ The repository is organized as follows:
 │   │   ├── dockerfile              Dev container (SDK + dotnet watch)
 │   │   ├── dockerfile.prod         Production image with an EF migration bundle
 │   │   └── AgileRetro.WebApi.http  Manual API request samples
+│   │
+│   ├── AgileRetro.WebApi.Integration.Tests/  xUnit HTTP and SignalR tests with Testcontainers PostgreSQL
+│   │   ├── CustomWebApplicationFactory.cs     Shared test host, database, and LiveKit configuration
+│   │   ├── ApiTestExtensions.cs               Create-session and join-session helpers
+│   │   ├── BoardHubTestExtensions.cs          Hub connection and event-stream helpers
+│   │   ├── Features/                          Tests mirroring the API feature folders
+│   │   └── Hubs/                              SignalR board hub tests
 │   │
 │   └── agile-retro-web/           Vite + React + TypeScript frontend
 │       ├── src/
@@ -722,6 +729,9 @@ dotnet build src/AgileRetro.WebApi/AgileRetro.WebApi.csproj
 # Backend run (Development environment; HTTP profile)
 dotnet run --project src/AgileRetro.WebApi --launch-profile http
 
+# Backend integration tests (Docker required for Testcontainers)
+dotnet test src/AgileRetro.WebApi.Integration.Tests/AgileRetro.WebApi.Integration.Tests.csproj
+
 # Migrations (run from src/AgileRetro.WebApi/)
 dotnet ef migrations add <Name>
 dotnet ef database update
@@ -741,7 +751,8 @@ Checks and status:
 - `dotnet build` succeeds with zero warnings; it is the current backend static check.
 - Connection verification: `dotnet ef database update` connects to the database and applies pending migrations. With no migrations it only confirms connectivity.
 - Frontend: `npm run build` type-checks with `tsc -b` before bundling, and `npm run lint` runs oxlint. Both currently pass.
-- Unit, integration, and end-to-end tests: no test projects exist yet. Add them alongside the first feature that needs them and document the commands here.
+- Backend integration tests: `src/AgileRetro.WebApi.Integration.Tests` uses xUnit and `WebApplicationFactory` against a Testcontainers PostgreSQL database. The shared fixture applies migrations and supplies test LiveKit credentials; run `dotnet test` as shown above. Tests cover every HTTP endpoint, including validation, not-found/authorization cases, and LiveKit `503` configuration failures. They also connect a `HubConnection` to `BoardHub` over the in-memory test server to cover `JoinBoard`, card create/update/delete, author-only write authorization, validation, broadcasts, and participant presence changes.
+- CI: `.github/workflows/ci.yml` runs on pull requests to `main` and manually via `workflow_dispatch`. It builds the backend and runs the integration tests, then installs, lints, and builds the frontend. Mark both CI jobs as required status checks in branch protection to block merges.
 - No frontend test runner is configured; selecting one (Vitest is the natural fit with Vite) is not yet decided.
 
 Do not assume commands exist without checking the project configuration, and do not invent test commands.

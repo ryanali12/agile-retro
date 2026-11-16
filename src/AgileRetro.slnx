@@ -1,3 +1,4 @@
 <Solution>
-    <Project Path="./AgileRetro.WebApi/AgileRetro.WebApi.csproj" />
+    <Project Path="AgileRetro.WebApi/AgileRetro.WebApi.csproj" />
+    <Project Path="AgileRetro.WebApi.Integration.Tests/AgileRetro.WebApi.Integration.Tests.csproj" />
 </Solution>
