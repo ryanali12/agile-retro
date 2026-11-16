@@ -243,6 +243,9 @@ docker compose up -d db
 dotnet build src/AgileRetro.WebApi/AgileRetro.WebApi.csproj
 dotnet run --project src/AgileRetro.WebApi --launch-profile http
 
+# API integration tests (Docker required for Testcontainers)
+dotnet test src/AgileRetro.WebApi.Integration.Tests/AgileRetro.WebApi.Integration.Tests.csproj
+
 # Migrations (from src/AgileRetro.WebApi)
 dotnet ef migrations add <Name>
 dotnet ef database update
@@ -256,6 +259,10 @@ npm run lint
 docker compose -f compose.prod.yml pull
 docker compose -f compose.prod.yml up -d
 ```
+
+## CI
+
+`.github/workflows/ci.yml` runs on pull requests to `main` and can be triggered manually from the Actions tab for any branch. It builds the backend, runs the integration tests (Docker is available on the hosted runner for Testcontainers), and lints and builds the frontend. To block merges on it, add the `Backend build and integration tests` and `Frontend lint and build` jobs as required status checks in the repository's branch protection rules.
 
 ## Conventions
 
