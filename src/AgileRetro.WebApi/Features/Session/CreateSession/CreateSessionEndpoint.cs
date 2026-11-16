@@ -12,6 +12,13 @@ public sealed class CreatedSessionEndpoint : IEndpoint
     {
         app.MapPost("/sessions", Handle)
         .WithName("CreateSession")
+        .WithTags("Sessions")
+        .WithSummary("Create a retro session")
+        .WithDescription(
+            "Creates a session with a generated join code and registers the facilitator " +
+            "as its first participant. Share the returned code so other participants " +
+            "can join. Both names are required and limited to 100 characters.")
+        .Accepts<CreateSessionRequest>("application/json")
         .Produces<CreateSessionResponse>(StatusCodes.Status200OK)
         .Produces<IDictionary<string, string[]>>(StatusCodes.Status400BadRequest);
     }
@@ -47,11 +54,20 @@ public sealed class CreatedSessionEndpoint : IEndpoint
     }
 }
 
+/// <summary>Request body for creating a session.</summary>
+/// <param name="Name">Session name. Required, maximum 100 characters.</param>
+/// <param name="ParticipantName">Facilitator display name. Required, maximum 100 characters.</param>
 public record CreateSessionRequest(
     string Name,
     string ParticipantName
 );
 
+/// <summary>Session created by the request.</summary>
+/// <param name="Id">Session id.</param>
+/// <param name="Name">Session name.</param>
+/// <param name="Code">Generated join code used by participants and the board route.</param>
+/// <param name="ParticipantId">Id of the facilitator participant created with the session.</param>
+/// <param name="ParticipantName">Facilitator display name.</param>
 public record CreateSessionResponse(
     Guid Id,
     string Name,

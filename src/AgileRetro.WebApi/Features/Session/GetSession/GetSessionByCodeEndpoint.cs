@@ -11,6 +11,11 @@ public sealed class GetSessionByCodeEndpoint : IEndpoint
     {
         app.MapGet("/sessions/by-code/{code}", Handle)
             .WithName("GetSessionByCode")
+            .WithTags("Sessions")
+            .WithSummary("Get a session by join code")
+            .WithDescription(
+                "Looks up a session by its generated join code. Returns the session id, " +
+                "name, and code, or 404 when no session has that code.")
             .Produces<GetSessionResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
     }
@@ -26,6 +31,10 @@ public sealed class GetSessionByCodeEndpoint : IEndpoint
     }
 }
 
+/// <summary>Session lookup result.</summary>
+/// <param name="Id">Session id.</param>
+/// <param name="Name">Session name.</param>
+/// <param name="Code">Join code used to open the session.</param>
 public sealed record GetSessionResponse(
     Guid Id,
     string Name,
