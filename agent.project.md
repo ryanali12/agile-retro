@@ -458,7 +458,7 @@ LiveKit is optional audio/video. Keep token issuance out of the SignalR hub; the
 - The frontend builds the token query in `src/features/session/sessionQueries.ts` and runs it from `SessionPageGuardDataProvider` once the participant is known. The session data context exposes it; token failures are non-blocking, so the board works without LiveKit.
 - A LiveKit identity is unique per room, so a second connection with the same identity replaces the first. If multi-tab voice becomes a requirement, use a per-connection identity and keep the participant id in token metadata.
 - The client should use the `url` returned with the token. `VITE_LIVEKIT_URL` / `APP_LIVEKIT_URL` are fallbacks for deployments where the server URL is not configured.
-- Media controls live inside `LiveKitRoom`. The session header hosts `MicrophoneToggle` (`useLocalParticipant` + `setMicrophoneEnabled`) and `RoomAudioRenderer` plays subscribed remote audio; keep both inside the room provider so they follow reconnects.
+- Media controls live inside `LiveKitRoom`. The session header hosts `MicrophoneToggle` (`useLocalParticipant` + `setMicrophoneEnabled`) and `RoomAudioRenderer` plays subscribed remote audio; keep both inside the room provider so they follow reconnects. `LiveKitRoom` sets `audio={false}` so participants join muted and only publish after choosing to unmute.
 - Documented endpoints carry OpenAPI metadata (`.WithSummary`, `.WithDescription`, `.Accepts`, `.Produces`). `GenerateDocumentationFile` is enabled, so XML comments appear in the OpenAPI document.
 
 ---

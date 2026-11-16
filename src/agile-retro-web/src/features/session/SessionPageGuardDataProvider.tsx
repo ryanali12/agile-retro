@@ -113,7 +113,7 @@ function SessionPageGuardDataProvider({ children }: { children: ReactNode }) {
 
   return (
     <LiveKitRoom
-      audio={true}
+      audio={false}
       video={false}
       serverUrl={liveKitTokenQuery.data?.url ?? livekitUrl}
       token={liveKitTokenQuery.data?.token}
