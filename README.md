@@ -106,12 +106,13 @@ The app is served on `http://localhost:5173`. With those variables set, the brow
 
 ## Production
 
-Production uses `compose.prod.yml`, which runs PostgreSQL, the API, the static frontend, and an nginx reverse proxy:
+Production uses `compose.prod.yml`, which runs PostgreSQL, the API, the static frontend, an nginx reverse proxy, and a certbot helper for TLS certificates:
 
+- `db` — PostgreSQL
 - `web_api` — API image on port 8080 inside the network
 - `web_app` — static frontend image served by nginx on port 80
-- `nginx` — public entrypoint on host port `5202`
-- `db` — PostgreSQL
+- `nginx` — public entrypoint on host ports `80` and `443`
+- `certbot` — certificate issuance and renewal helper with webroot and certificate volumes
 
 The API and frontend images are published as `ghcr.io/ryanali12/agile-retro-web-api` and `ghcr.io/ryanali12/agile-retro-web`. If the packages are private, authenticate first with `docker login ghcr.io`.
 
@@ -138,15 +139,18 @@ WEB_APP_HUB_URL=/hubs
 # it must be an absolute origin if Compose passes it.
 CORS_ALLOWED_ORIGINS_0=https://retro.example.com
 
-# LiveKit server and server-side API credentials.
+# LiveKit server and server-side API credentials. The frontend LiveKit URL is
+# set separately as APP_LIVEKIT_URL on the web_app service in compose.prod.yml.
 LIVEKIT_URL=wss://livekit.example.com
 LIVEKIT_API_KEY=<key>
 LIVEKIT_API_SECRET=<secret>
 ```
 
+`LIVEKIT_URL` configures the token issuer in the API. The frontend's `APP_LIVEKIT_URL` is set directly on the `web_app` service in `compose.prod.yml` (currently the project's LiveKit Cloud instance) rather than derived from `LIVEKIT_URL`; update it when pointing the frontend at a different LiveKit server.
+
 With `WEB_APP_API_URL=/api` and `WEB_APP_HUB_URL=/hubs`, all browser traffic goes through nginx on the same origin. `nginx.conf` proxies `/api` and `/hubs` to the API and everything else to the static frontend. For a direct cross-origin setup, use absolute URLs such as `https://api.example.com/api` and `https://api.example.com/hubs`, and set `CORS_ALLOWED_ORIGINS_0` to the frontend origin.
 
-The frontend image is built without fixed API, hub, or LiveKit URLs. The built JavaScript contains the `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders, and `src/agile-retro-web/env.sh` replaces them at container startup from the matching environment variables that Compose derives from `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, and `LIVEKIT_URL`.
+The frontend image is built without fixed API, hub, or LiveKit URLs. The built JavaScript contains the `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders, and `src/agile-retro-web/env.sh` replaces them at container startup from the matching environment variables. Compose derives `APP_API_URL` and `APP_HUB_URL` from `WEB_APP_API_URL` and `WEB_APP_HUB_URL`; `APP_LIVEKIT_URL` is set directly in `compose.prod.yml`.
 
 ### Deploy
 
@@ -156,12 +160,26 @@ docker compose -f compose.prod.yml up -d
 docker compose -f compose.prod.yml exec web_api ./efbundle
 ```
 
-The last command applies the EF Core migrations bundled into the API image. Open the app through nginx at `http://<host>:5202`.
+The last command applies the EF Core migrations bundled into the API image. After DNS points at the host, open the app through nginx at `http://<host>` (port 80).
+
+### TLS and certificates
+
+The `certbot` service mounts `./certbot/www` as the ACME webroot and `./certbot/conf` for issued certificates. Nginx mounts the same directories read-only at `/var/www/certbot` and `/etc/nginx/ssl`.
+
+The checked-in `nginx.conf` listens on port 80 only. To terminate TLS in this stack, add an HTTPS server block that references the certificates under `/etc/nginx/ssl/live/<domain>/` and an ACME challenge location for `/.well-known/acme-challenge/`, then issue or renew certificates explicitly:
+
+```bash
+docker compose -f compose.prod.yml run --rm certbot certonly --webroot -w /var/www/certbot -d <domain>
+docker compose -f compose.prod.yml run --rm certbot renew
+```
+
+Reload nginx after certificates change. The certbot service is a helper for explicit commands rather than a long-running renewal daemon. Alternatively, terminate TLS in front of nginx and keep port 80 internal.
 
 For a public deployment:
 
-- Publish only nginx (or terminate TLS in front of it). The `db`, `web_api`, and `web_app` port mappings in `compose.prod.yml` are for local testing and should be removed or firewalled.
-- Configure HTTPS at nginx or the upstream load balancer.
+- Expose only nginx on ports 80 and 443 (or terminate TLS upstream). The `db`, `web_api`, and `web_app` port mappings in `compose.prod.yml` are for local testing and should be removed or firewalled.
+- Use the certbot service or an upstream load balancer for HTTPS.
+- Keep `certbot/` out of version control; it contains private keys and issued certificates.
 - Set `AllowedHosts` to the real hostnames and, for a cross-origin API, set `CORS_ALLOWED_ORIGINS_0` to the frontend origin.
 - Keep production secrets in environment variables or a secret manager, and rotate any credential that has been committed to the repository.
 
@@ -182,20 +200,112 @@ The theme follows the operating system by default. The header toggle can pin Lig
 
 The board shows a `Live` badge while connected and a `Reconnecting` / `Offline` state if the hub connection drops. The hub URL comes from `VITE_HUB_URL` in development, or the `APP_HUB_URL` runtime substitution in the production image, with `/hubs` as the same-origin path.
 
-## LiveKit (audio/video)
+## API
 
-LiveKit provides optional audio/video for a session. Media traffic goes directly between participants and the LiveKit server; the API only issues access tokens.
+HTTP endpoints are grouped under `/api`. The root route and the SignalR hub are mapped separately. In Development, the OpenAPI document is served at `/openapi/v1.json` and the Scalar UI at `/scalar/v1`. In production, nginx proxies `/api` and `/hubs` to the API, so the same paths work on the public origin.
 
-The token endpoint is:
+### HTTP endpoints
 
-```text
-POST /api/sessions/{code}/livekit-token
-Content-Type: application/json
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/` | Plain-text liveness check |
+| `POST` | `/api/sessions` | Create a session and its first participant |
+| `GET` | `/api/sessions/by-code/{code}` | Look up a session by join code |
+| `POST` | `/api/sessions/{code}/participants` | Join an existing session |
+| `GET` | `/api/sessions/{sessionCode}/participants/{participantId}` | Look up a participant |
+| `POST` | `/api/sessions/{code}/livekit-token` | Issue a LiveKit access token |
 
-{ "participantId": "<id>" }
+All request bodies use JSON. Validation failures return `400` with a dictionary of field names to message arrays, for example:
+
+```json
+{
+  "Name": ["'Name' must not be empty."],
+  "ParticipantName": ["'Participant Name' must be between 1 and 100 characters."]
+}
 ```
 
-It returns:
+#### `GET /`
+
+Returns `Hello` as `text/plain`. Use it as a basic liveness check.
+
+#### `POST /api/sessions`
+
+Creates a session with an 8-character join code and registers the facilitator as the first participant.
+
+```json
+{
+  "name": "Sprint 42 retro",
+  "participantName": "Ada"
+}
+```
+
+`name` and `participantName` are required and limited to 100 characters. Returns `200`:
+
+```json
+{
+  "id": "6f1f0f3e-6a1e-4a3e-9e1e-5f0e2f0f3e6a",
+  "name": "Sprint 42 retro",
+  "code": "ABCD2345",
+  "participantId": "7a2a1b4c-8d3e-4f5a-9b6c-1d2e3f4a5b6c",
+  "participantName": "Ada"
+}
+```
+
+#### `GET /api/sessions/by-code/{code}`
+
+Returns the session matching the join code, or `404` when no session has that code.
+
+```json
+{
+  "id": "6f1f0f3e-6a1e-4a3e-9e1e-5f0e2f0f3e6a",
+  "name": "Sprint 42 retro",
+  "code": "ABCD2345"
+}
+```
+
+#### `POST /api/sessions/{code}/participants`
+
+Adds a participant to an existing session. Returns `404` when the code is unknown and `400` when the body is invalid.
+
+```json
+{
+  "participantName": "Grace"
+}
+```
+
+Returns `200`:
+
+```json
+{
+  "participantId": "9b3b2c5d-9e4f-4a6b-8c7d-2e3f4a5b6c7d",
+  "participantName": "Grace"
+}
+```
+
+Store `participantId`; it identifies the participant on later HTTP and hub calls. It is not a secret, but the API verifies that it belongs to the session before using it.
+
+#### `GET /api/sessions/{sessionCode}/participants/{participantId}`
+
+Returns the participant's id and display name when the participant belongs to the session. Returns `404` when the session or participant is unknown.
+
+```json
+{
+  "id": "9b3b2c5d-9e4f-4a6b-8c7d-2e3f4a5b6c7d",
+  "name": "Grace"
+}
+```
+
+#### `POST /api/sessions/{code}/livekit-token`
+
+Issues a short-lived LiveKit token for a participant who has joined the session. See [LiveKit (audio/video)](#livekit-audiovideo) for server configuration and token grants.
+
+```json
+{
+  "participantId": "9b3b2c5d-9e4f-4a6b-8c7d-2e3f4a5b6c7d"
+}
+```
+
+Returns `200`:
 
 ```json
 {
@@ -206,7 +316,60 @@ It returns:
 }
 ```
 
-The endpoint reuses the same membership check as `JoinBoard`, so a participant can only get a token for a session they have joined. It returns `404` when the session or participant is unknown and `503` when LiveKit is not configured. Full API documentation is available in the OpenAPI document at `/openapi/v1.json` in Development.
+Returns `404` when the session or participant is unknown and `503` with a Problem Details body when LiveKit is not configured. Request a new token before `expiresAt`.
+
+### SignalR hub
+
+The live board uses a SignalR hub at `/hubs/board`. The frontend builds that URL by appending `/board` to `VITE_HUB_URL` or `APP_HUB_URL`. Clients must call `JoinBoard` before the other methods; the connection is then bound to that session membership, and card writes use the bound participant as the author.
+
+Client-to-server methods:
+
+| Method | Arguments | Result | Notes |
+|---|---|---|---|
+| `JoinBoard` | `code`, `participantId` | `BoardSnapshot` | Validates membership, joins the session group, and returns cards plus active participants |
+| `CreateCard` | `{ columnKey, text }` | `BoardCardResponse` | Creates a card authored by the connection's participant |
+| `UpdateCard` | `{ cardId, text }` | `BoardCardResponse` | Author-only; other participants' cards are rejected |
+| `DeleteCard` | `{ cardId }` | `Guid` | Author-only; other participants' cards are rejected |
+
+Server-to-client events:
+
+| Event | Payload | When |
+|---|---|---|
+| `CardCreated` | `BoardCardResponse` | A card was created by another connection |
+| `CardUpdated` | `BoardCardResponse` | A card was edited by another connection |
+| `CardDeleted` | card id (`Guid`) | A card was deleted by another connection |
+| `ParticipantsChanged` | array of `{ participantId, name }` | A participant joined or the last connection for a participant disconnected |
+
+`BoardSnapshot` contains the session id, code, name, cards, and active participants:
+
+```json
+{
+  "sessionId": "<session uuid>",
+  "code": "ABCD2345",
+  "name": "Sprint 42 retro",
+  "cards": [
+    {
+      "id": "<card uuid>",
+      "participantId": "<participant uuid>",
+      "authorName": "Ada",
+      "columnKey": "went-well",
+      "text": "Pairing worked well",
+      "createdAt": "2026-01-01T12:00:00Z"
+    }
+  ],
+  "participants": [
+    { "participantId": "<participant uuid>", "name": "Ada" }
+  ]
+}
+```
+
+Valid column keys are `went-well`, `didnt-go-well`, `needs-improvement`, and `action-items`. Card text is trimmed and must be between 1 and 500 characters. Invalid calls throw a `HubException`; failed writes do not broadcast.
+
+## LiveKit (audio/video)
+
+LiveKit provides optional audio/video for a session. Media traffic goes directly between participants and the LiveKit server; the API only issues access tokens.
+
+Token issuance is documented in the [API](#api) section under `POST /api/sessions/{code}/livekit-token`. The endpoint reuses the same membership check as `JoinBoard`, so a participant can only get a token for a session they have joined.
 
 Server configuration:
 

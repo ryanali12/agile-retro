@@ -49,6 +49,6 @@ services:
       - "LiveKit__ApiKey=${LIVEKIT_API_KEY}"
       - "LiveKit__ApiSecret=${LIVEKIT_API_SECRET}"
       - "LiveKit__Url=${LIVEKIT_URL}"
-    entrypoint: ["dotnet", "watch", "--urls", "http://0.0.0.0:5101"]
+    entrypoint: ["dotnet", "watch", "--urls", "http://0.0.0.0:5101", "--non-interactive"]
 volumes:
   pgdata:

@@ -14,6 +14,12 @@ public sealed class GetParticipantByIdAndSessionCode : IEndpoint
             Handle
         )
             .WithName("GetParticipant")
+            .WithTags("Participants")
+            .WithSummary("Get a participant")
+            .WithDescription(
+                "Returns a participant's id and display name when the participant belongs " +
+                "to the session identified by the join code. Returns 404 when the session " +
+                "or participant is unknown.")
             .Produces<GetParticipantResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
     }
@@ -41,6 +47,9 @@ public sealed class GetParticipantByIdAndSessionCode : IEndpoint
     }
 }
 
+/// <summary>Participant lookup result.</summary>
+/// <param name="Id">Participant id.</param>
+/// <param name="Name">Display name shown on the board.</param>
 public sealed record GetParticipantResponse(
     Guid Id,
     string Name

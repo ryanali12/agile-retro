@@ -6,6 +6,7 @@ using AgileRetro.WebApi.Features.LiveKit;
 using AgileRetro.WebApi.Hubs;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -58,6 +59,7 @@ app.UseCors();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 else
 {
@@ -68,7 +70,12 @@ else
 app.MapGet("/", () =>
 {
     return "Hello";
-});
+})
+.WithName("GetRoot")
+.WithTags("Health")
+.WithSummary("API root")
+.WithDescription("Returns a plain-text greeting. Use this route as a basic liveness check.")
+.Produces<string>(StatusCodes.Status200OK);
 app.MapEndpoints(app.MapGroup("api"));
 app.MapHub<BoardHub>("/hubs/board");
 

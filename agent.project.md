@@ -14,7 +14,7 @@ This repository contains a software application consisting of:
 - **Media:** LiveKit for optional audio/video rooms; the API issues participant tokens and the frontend uses `livekit-client`
 - **Architecture:** Backend: a single ASP.NET Core minimal API project with explicit endpoint discovery; frontend: feature-based React SPA (see [Frontend Architecture](#frontend-architecture))
 - **Testing:** xUnit integration tests for the HTTP API and SignalR board hub, backed by Testcontainers PostgreSQL; no frontend test runner yet
-- **Infrastructure / Orchestration:** Docker Compose for local and production stacks. Production runs PostgreSQL, the API, a static frontend container, and nginx.
+- **Infrastructure / Orchestration:** Docker Compose for local and production stacks. Production runs PostgreSQL, the API, a static frontend container, nginx, and a certbot helper.
 - **Frontend routing:** `react-router` (`BrowserRouter` + `Routes`)
 - **Realtime client:** `@microsoft/signalr`
 
@@ -156,7 +156,7 @@ The repository is organized as follows:
 │       └── package.json
 │
 ├── compose.yaml                   Local dev stack (PostgreSQL, API, frontend)
-├── compose.prod.yml               Production stack (PostgreSQL, API, frontend, nginx)
+├── compose.prod.yml               Production stack (PostgreSQL, API, frontend, nginx, certbot)
 ├── nginx.conf                     Production reverse proxy
 ├── .env.example                   Copy to .env (gitignored) for Compose values
 ├── agents.md                      General agent instructions
@@ -429,7 +429,7 @@ When adding a feature:
 
 - **Host development:** Vite proxies `/api` and `/hubs` to `http://localhost:5164`. The proxy applies to relative client URLs; absolute `VITE_API_URL` / `VITE_HUB_URL` values bypass it.
 - **Docker development:** Compose passes `WEB_APP_API_URL` and `WEB_APP_HUB_URL` into the web container as `VITE_API_URL` and `VITE_HUB_URL`, using the host-published API port. The API's `Cors:AllowedOrigins` must include the host-published frontend origin.
-- **Production:** `nginx.conf` serves the frontend and proxies `/api/` and `/hubs/` to the API. The web container's `env.sh` rewrites the `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders in the built JavaScript at startup from `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, and `LIVEKIT_URL`. Use `/api` and `/hubs` for the normal same-origin deployment, or absolute URLs for a direct cross-origin deployment.
+- **Production:** `nginx.conf` serves the frontend and proxies `/api/` and `/hubs/` to the API. The web container's `env.sh` rewrites the `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders in the built JavaScript at startup. `APP_API_URL` and `APP_HUB_URL` come from `WEB_APP_API_URL` and `WEB_APP_HUB_URL`; `APP_LIVEKIT_URL` is set directly on the `web_app` service in `compose.prod.yml`. Use `/api` and `/hubs` for the normal same-origin deployment, or absolute URLs for a direct cross-origin deployment.
 - The API only emits CORS headers for origins listed in `Cors:AllowedOrigins`. Leave the list empty for same-origin deployments; when Compose passes `Cors__AllowedOrigins__0`, use a valid absolute origin or remove the environment mapping rather than setting it to an empty or placeholder value.
 - The Vite proxy is not a production feature. Do not rely on the Vite server in production; the production image serves static files through nginx.
 
@@ -634,14 +634,15 @@ Follow the infrastructure and deployment conventions established by the project.
 ## Current setup
 
 - `compose.yaml` is the local development stack: PostgreSQL, the API image running `dotnet watch`, and the frontend image running Vite. Source directories are bind-mounted for live reload.
-- `compose.prod.yml` is the production stack: PostgreSQL, the published API image (`ghcr.io/ryanali12/agile-retro-web-api`), the published frontend image (`ghcr.io/ryanali12/agile-retro-web`), and nginx (`nginx:1.30.6-alpine`).
-- `nginx.conf` at the repository root is the production entrypoint. It proxies `/api/` and `/hubs/` to the API container, including WebSocket upgrade headers and long read/send timeouts, and proxies everything else to the frontend container. Users should load the app through this proxy so the API and hub stay same-origin; do not send production traffic to the frontend container directly.
+- `compose.prod.yml` is the production stack: PostgreSQL, the published API image (`ghcr.io/ryanali12/agile-retro-web-api`), the published frontend image (`ghcr.io/ryanali12/agile-retro-web`), nginx (`nginx:1.30.6-alpine`), and certbot (`certbot/certbot:latest`).
+- `nginx.conf` at the repository root is the production entrypoint. It publishes host ports `80` and `443`, proxies `/api/` and `/hubs/` to the API container, including WebSocket upgrade headers and long read/send timeouts, and proxies everything else to the frontend container. Users should load the app through this proxy so the API and hub stay same-origin; do not send production traffic to the frontend container directly.
+- The nginx config only listens on port 80. The certbot service mounts the ACME webroot at `./certbot/www` and certificates at `./certbot/conf`; nginx mounts the same directories read-only at `/var/www/certbot` and `/etc/nginx/ssl`. Enable HTTPS by adding a `443` server block and an ACME challenge location to `nginx.conf`, then issue and renew certificates with explicit `docker compose -f compose.prod.yml run --rm certbot ...` commands. Keep `certbot/` out of version control.
 - `src/agile-retro-web/dockerfile.prod` builds the SPA and copies it into an nginx image. `src/agile-retro-web/nginx.conf` serves the static files with SPA fallback (`try_files ... /index.html`).
-- `src/agile-retro-web/env.sh` runs from the nginx entrypoint and replaces the literal `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders in the built JavaScript with the matching environment variables. Compose sets those from `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, and `LIVEKIT_URL`. Use `/api` and `/hubs` for the same-origin nginx deployment, or absolute URLs for a direct cross-origin deployment.
+- `src/agile-retro-web/env.sh` runs from the nginx entrypoint and replaces the literal `APP_API_URL`, `APP_HUB_URL`, and `APP_LIVEKIT_URL` placeholders in the built JavaScript with the matching environment variables. Compose sets `APP_API_URL` and `APP_HUB_URL` from `WEB_APP_API_URL` and `WEB_APP_HUB_URL`, and sets `APP_LIVEKIT_URL` directly in `compose.prod.yml`. Use `/api` and `/hubs` for the same-origin nginx deployment, or absolute URLs for a direct cross-origin deployment.
 - `src/AgileRetro.WebApi/dockerfile.prod` publishes the API in Release mode and bundles EF Core migrations as `/app/efbundle`. Apply them after starting the production stack with `docker compose -f compose.prod.yml exec web_api ./efbundle`.
-- LiveKit is not a Compose service. Point `LIVEKIT_URL` at a self-hosted server or LiveKit Cloud, and give the API its `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`. The endpoint returns `503` when credentials are absent.
+- LiveKit is not a Compose service. Point the API's `LIVEKIT_URL` at a self-hosted server or LiveKit Cloud, and give the API its `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`. The endpoint returns `503` when credentials are absent. The frontend LiveKit URL is not derived from `LIVEKIT_URL` in production; set `APP_LIVEKIT_URL` directly on the `web_app` service.
 - Production configuration comes from the root `.env` file (gitignored): `POSTGRES_*`, `POSTGRES_CONNECTION_STRING`, `WEB_API_PORT`, `WEB_APP_PORT`, `WEB_APP_API_URL`, `WEB_APP_HUB_URL`, `CORS_ALLOWED_ORIGINS_0`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`. The API reads `ConnectionStrings__AgileRetro`, `Cors__AllowedOrigins__0`, and `LiveKit__*` from its container environment.
-- The production Compose file publishes PostgreSQL, API, frontend, and nginx ports. For a real deployment, expose only nginx (or terminate TLS in front of it) and remove or firewall the internal service ports.
+- The production Compose file publishes PostgreSQL on `5432`, the API on `WEB_API_PORT`, the frontend on `WEB_APP_PORT`, and nginx on `80` and `443`. For a real deployment, expose only nginx (or terminate TLS in front of it) and remove or firewall the internal service ports.
 
 ## Rules
 
